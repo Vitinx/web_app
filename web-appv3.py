@@ -2,7 +2,13 @@ import streamlit as st
 import os
 import glob
 import pandas as pd
-from functions import *
+import datetime
+from datetime import datetime
+import locale
+
+# Configurar o locale para formato brasileiro
+locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+# from functions import *
 #from backend import corrigir_valor, consolidar_arquivos_ap007b, processar_arquivos_ap007a, processar_dados_cobranca, gerar_arquivo_ap007a_criacao, gerar_arquivo_ap007a_atualizacao, gerar_arquivo_ap007a_inativacao, gerar_arquivo_ap007b_criacao, gerar_arquivo_ap007b_atualizacao, gerar_arquivo_ap007b_inativacao, processar_casos_de_inativacao, carregar_dados_cobranca_relatorio_final_marketup, gerar_relatorio_final_marketup
 
 # Usado para salvar e encontrar os arquivos do dia
@@ -67,8 +73,8 @@ def home():
         #st.session_state.page = "menu_relatorio_cerc"
     if st.button("Relatório MarketUP"):
         st.session_state.page = "menu_relatorio_marketup"
-    if st.button("Relatório Financeiro"):
-        st.session_state.page = "menu_relatorio_financeiro"
+    # if st.button("Relatório Financeiro"):
+    #     st.session_state.page = "menu_relatorio_financeiro"
     st.markdown('</div>', unsafe_allow_html=True)
     
 def menu_tipo_relatorio():
@@ -444,7 +450,152 @@ def inativacao_contratos():
 
 def menu_relatorio_marketup():
     st.markdown('<div class="title">Relatório MarketUP</div>', unsafe_allow_html=True)
-    st.write("Conteúdo do Relatório MarketUP.")
+    st.markdown('<div class="centered">', unsafe_allow_html=True)
+
+    # Input para o caminho da pasta com arquivos de retorno
+    st.markdown('<div class="subtitle">Insira o caminho da pasta de retorno</div>', unsafe_allow_html=True)
+    path = st.text_input("Digite o caminho da pasta com os arquivos de retorno:", 
+                        'arquivos_retorno/arquivos_ap005/20_09_2024/*20240923*.csv')
+
+    if st.button("Processar Arquivos"):
+        try:
+            # Verificação dos arquivos
+            arquivos_csv = glob.glob(path)
+            if len(arquivos_csv) == 0:
+                st.error(f"Nenhum arquivo encontrado no caminho: {path}")
+                return
+
+            st.info(f"Encontrados {len(arquivos_csv)} arquivos para processamento")
+
+            # Processamento dos arquivos
+            df_consolidado = pd.concat([pd.read_csv(arquivo, header=None, delimiter=';') 
+                                      for arquivo in arquivos_csv])
+
+            # Definindo colunas
+            colunas = [
+                "referencia_externa", "entidade_registradora", "instituicao_credenciadora",
+                "usuario_final_recebedor", "arranjo_pagamento", "data_liquidacao",
+                "titular_unidade_recebivel", "constituicao_unidade_recebivel", 
+                "valor_constituido_total", "valor_constituido_antecipacao_pre_contratado", 
+                "valor_bloqueado", "informacoes_pagamento", "carteira", 
+                "valor_livre", "valor_total_ur", "dt_atualizacao_ur"
+            ]
+            df_consolidado.columns = colunas
+
+            # Processamento das informações de pagamento
+            novas_colunas = [
+                "numero_documento_titular", "tipo_conta", "compe", "ispb", 
+                "agencia", "numero_conta", "valor_a_pagar", "beneficiario", 
+                "data_liquidacao_efetiva", "valor_liquidacao_efetiva", "regra_divisao",
+                "valor_onerado_unidade_recebivel", "tipo_informacao_pagamento", 
+                "indicador_ordem_efeito", "valor_constituido_contrato_unidade_recebivel"
+            ]
+
+            # Processamento das colunas
+            df_consolidado['informacoes_pagamento'] = df_consolidado['informacoes_pagamento'].str.split('|').str[0]
+            df_separado = df_consolidado['informacoes_pagamento'].str.split(';', expand=True)
+            df_separado.columns = novas_colunas
+
+            # Consolidação dos dados
+            df_ap005 = pd.concat([df_consolidado.drop('informacoes_pagamento', axis=1), 
+                                df_separado], axis=1)
+
+            # Conversão e limpeza dos dados
+            df_ap005['entidade_registradora'] = df_ap005['entidade_registradora'].astype(str)
+            df_ap005['instituicao_credenciadora'] = df_ap005['instituicao_credenciadora'].astype(str)
+            df_ap005['usuario_final_recebedor'] = df_ap005['usuario_final_recebedor'].astype(str)
+            
+            # Conversão de valores numéricos
+            colunas_valor = ['valor_a_pagar', 'valor_liquidacao_efetiva', 
+                           'valor_onerado_unidade_recebivel', 
+                           'valor_constituido_contrato_unidade_recebivel']
+            
+            for coluna in colunas_valor:
+                df_ap005[coluna] = df_ap005[coluna].replace('', '0').fillna('0').astype(float)
+
+            # Formatação dos CNPJs
+            df_ap005['usuario_final_recebedor'] = df_ap005['usuario_final_recebedor'].str.rstrip('.0')
+            
+            cnpj_colunas = ['entidade_registradora', 'instituicao_credenciadora', 
+                           'usuario_final_recebedor']
+            
+            for coluna in cnpj_colunas:
+                df_ap005[coluna] = df_ap005[coluna].apply(
+                    lambda x: x.zfill(14) if len(x) < 14 else x
+                )
+
+            # Remoção de registros inválidos
+            df_ap005 = df_ap005[~df_ap005['instituicao_credenciadora'].str.startswith('105001')]
+
+            # Análise de pagamentos
+            df_ap005['pago'] = df_ap005.apply(
+                lambda row: True if pd.notna(row['data_liquidacao_efetiva']) 
+                and row['data_liquidacao_efetiva'] != '' else False, 
+                axis=1
+            )
+
+            # Agrupamento por CNPJ
+            resumo_pagamentos = df_ap005.groupby('usuario_final_recebedor').agg({
+                'valor_a_pagar': 'sum',
+                'valor_liquidacao_efetiva': 'sum',
+                'pago': 'sum'
+            }).reset_index()
+
+            # Cálculo de percentuais
+            resumo_pagamentos['percentual_pago'] = (
+                resumo_pagamentos['valor_liquidacao_efetiva'] / 
+                resumo_pagamentos['valor_a_pagar'] * 100
+            ).round(2)
+
+            resumo_pagamentos['status'] = resumo_pagamentos['percentual_pago'].apply(
+                lambda x: 'PAGO' if x >= 50 else 'NÃO PAGO'
+            )
+
+            # Exibição dos resultados
+            st.success("Processamento concluído com sucesso!")
+            
+            st.markdown('<div class="subtitle">Resumo de Pagamentos</div>', 
+                       unsafe_allow_html=True)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total de CNPJs", len(resumo_pagamentos))
+                st.metric("CNPJs Pagos", 
+                         len(resumo_pagamentos[resumo_pagamentos['status'] == 'PAGO']))
+            with col2:
+                st.metric("Valor Total", 
+                        f"R$ {locale.format_string('%.2f', resumo_pagamentos['valor_a_pagar'].sum(), grouping=True)}")
+                st.metric("Valor Pago", 
+                        f"R$ {locale.format_string('%.2f', resumo_pagamentos['valor_liquidacao_efetiva'].sum(), grouping=True)}")
+
+            # Download dos resultados
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            st.markdown('### Download dos Relatórios')
+            
+            # Convertendo para CSV
+            df_ap005_csv = df_ap005.to_csv(index=False)
+            resumo_csv = resumo_pagamentos.to_csv(index=False)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    label="Download Dados Completos",
+                    data=df_ap005_csv,
+                    file_name=f'relatorio_completo_{timestamp}.csv',
+                    mime='text/csv'
+                )
+            with col2:
+                st.download_button(
+                    label="Download Resumo",
+                    data=resumo_csv,
+                    file_name=f'resumo_pagamentos_{timestamp}.csv',
+                    mime='text/csv'
+                )
+
+        except Exception as e:
+            st.error(f"Erro durante o processamento: {str(e)}")
+
     if st.button("Voltar"):
         st.session_state.page = "home"
 
