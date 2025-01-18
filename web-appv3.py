@@ -5,6 +5,7 @@ import pandas as pd
 import datetime
 from datetime import datetime
 import locale
+from processar_pagamentos import *  
 
 # Configurar o locale para formato brasileiro
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
@@ -452,104 +453,59 @@ def menu_relatorio_marketup():
     st.markdown('<div class="title">Relatório MarketUP</div>', unsafe_allow_html=True)
     st.markdown('<div class="centered">', unsafe_allow_html=True)
 
-    # Input para o caminho da pasta com arquivos de retorno
-    st.markdown('<div class="subtitle">Insira o caminho da pasta de retorno</div>', unsafe_allow_html=True)
-    path = st.text_input("Digite o caminho da pasta com os arquivos de retorno:", 
-                        'arquivos_retorno/arquivos_ap005/20_09_2024/*20240923*.csv')
+    # File uploaders for AP005 files and CNPJ file
+    st.markdown('<div class="subtitle">Arquivos de Entrada</div>', unsafe_allow_html=True)
+    
+    # Permitir múltiplos arquivos AP005
+    uploaded_ap005_files = st.file_uploader("Selecione os arquivos AP005", 
+                                          type=['csv', 'xlsx'], 
+                                          accept_multiple_files=True)
+    uploaded_cnpj = st.file_uploader("Selecione o arquivo de CNPJs agrupados", 
+                                    type=['csv', 'xlsx'])
 
     if st.button("Processar Arquivos"):
+        if not uploaded_ap005_files or uploaded_cnpj is None:
+            st.error("Por favor, faça upload de pelo menos um arquivo AP005 e o arquivo de CNPJs agrupados")
+            return
+
         try:
-            # Verificação dos arquivos
-            arquivos_csv = glob.glob(path)
-            if len(arquivos_csv) == 0:
-                st.error(f"Nenhum arquivo encontrado no caminho: {path}")
-                return
+            # Ler arquivo de CNPJs
+            if uploaded_cnpj.name.endswith('.xlsx'):
+                df_cnpj = pd.read_excel(uploaded_cnpj)
+            else:
+                df_cnpj = pd.read_csv(uploaded_cnpj, delimiter=';')
 
-            st.info(f"Encontrados {len(arquivos_csv)} arquivos para processamento")
+            # Lista para armazenar todos os DataFrames AP005
+            all_ap005_dfs = []
 
-            # Processamento dos arquivos
-            df_consolidado = pd.concat([pd.read_csv(arquivo, header=None, delimiter=';') 
-                                      for arquivo in arquivos_csv])
+            # Processar cada arquivo AP005
+            for ap005_file in uploaded_ap005_files:
+                if ap005_file.name.endswith('.xlsx'):
+                    df = pd.read_excel(ap005_file, header=None)
+                else:
+                    df = pd.read_csv(ap005_file, header=None, delimiter=';')
+                
+                # Definindo colunas do AP005
+                colunas = [
+                    "referencia_externa", "entidade_registradora", 
+                    "instituicao_credenciadora", "usuario_final_recebedor", 
+                    "arranjo_pagamento", "data_liquidacao",
+                    "titular_unidade_recebivel", "constituicao_unidade_recebivel", 
+                    "valor_constituido_total", "valor_constituido_antecipacao_pre_contratado", 
+                    "valor_bloqueado", "informacoes_pagamento", "carteira", 
+                    "valor_livre", "valor_total_ur", "dt_atualizacao_ur"
+                ]
+                df.columns = colunas
+                all_ap005_dfs.append(df)
 
-            # Definindo colunas
-            colunas = [
-                "referencia_externa", "entidade_registradora", "instituicao_credenciadora",
-                "usuario_final_recebedor", "arranjo_pagamento", "data_liquidacao",
-                "titular_unidade_recebivel", "constituicao_unidade_recebivel", 
-                "valor_constituido_total", "valor_constituido_antecipacao_pre_contratado", 
-                "valor_bloqueado", "informacoes_pagamento", "carteira", 
-                "valor_livre", "valor_total_ur", "dt_atualizacao_ur"
-            ]
-            df_consolidado.columns = colunas
-
-            # Processamento das informações de pagamento
-            novas_colunas = [
-                "numero_documento_titular", "tipo_conta", "compe", "ispb", 
-                "agencia", "numero_conta", "valor_a_pagar", "beneficiario", 
-                "data_liquidacao_efetiva", "valor_liquidacao_efetiva", "regra_divisao",
-                "valor_onerado_unidade_recebivel", "tipo_informacao_pagamento", 
-                "indicador_ordem_efeito", "valor_constituido_contrato_unidade_recebivel"
-            ]
-
-            # Processamento das colunas
-            df_consolidado['informacoes_pagamento'] = df_consolidado['informacoes_pagamento'].str.split('|').str[0]
-            df_separado = df_consolidado['informacoes_pagamento'].str.split(';', expand=True)
-            df_separado.columns = novas_colunas
-
-            # Consolidação dos dados
-            df_ap005 = pd.concat([df_consolidado.drop('informacoes_pagamento', axis=1), 
-                                df_separado], axis=1)
-
-            # Conversão e limpeza dos dados
-            df_ap005['entidade_registradora'] = df_ap005['entidade_registradora'].astype(str)
-            df_ap005['instituicao_credenciadora'] = df_ap005['instituicao_credenciadora'].astype(str)
-            df_ap005['usuario_final_recebedor'] = df_ap005['usuario_final_recebedor'].astype(str)
+            # Concatenar todos os DataFrames AP005
+            combined_ap005 = pd.concat(all_ap005_dfs, ignore_index=True)
             
-            # Conversão de valores numéricos
-            colunas_valor = ['valor_a_pagar', 'valor_liquidacao_efetiva', 
-                           'valor_onerado_unidade_recebivel', 
-                           'valor_constituido_contrato_unidade_recebivel']
-            
-            for coluna in colunas_valor:
-                df_ap005[coluna] = df_ap005[coluna].replace('', '0').fillna('0').astype(float)
+            # Remover duplicatas baseadas em todas as colunas
+            combined_ap005 = combined_ap005.drop_duplicates()
 
-            # Formatação dos CNPJs
-            df_ap005['usuario_final_recebedor'] = df_ap005['usuario_final_recebedor'].str.rstrip('.0')
-            
-            cnpj_colunas = ['entidade_registradora', 'instituicao_credenciadora', 
-                           'usuario_final_recebedor']
-            
-            for coluna in cnpj_colunas:
-                df_ap005[coluna] = df_ap005[coluna].apply(
-                    lambda x: x.zfill(14) if len(x) < 14 else x
-                )
-
-            # Remoção de registros inválidos
-            df_ap005 = df_ap005[~df_ap005['instituicao_credenciadora'].str.startswith('105001')]
-
-            # Análise de pagamentos
-            df_ap005['pago'] = df_ap005.apply(
-                lambda row: True if pd.notna(row['data_liquidacao_efetiva']) 
-                and row['data_liquidacao_efetiva'] != '' else False, 
-                axis=1
-            )
-
-            # Agrupamento por CNPJ
-            resumo_pagamentos = df_ap005.groupby('usuario_final_recebedor').agg({
-                'valor_a_pagar': 'sum',
-                'valor_liquidacao_efetiva': 'sum',
-                'pago': 'sum'
-            }).reset_index()
-
-            # Cálculo de percentuais
-            resumo_pagamentos['percentual_pago'] = (
-                resumo_pagamentos['valor_liquidacao_efetiva'] / 
-                resumo_pagamentos['valor_a_pagar'] * 100
-            ).round(2)
-
-            resumo_pagamentos['status'] = resumo_pagamentos['percentual_pago'].apply(
-                lambda x: 'PAGO' if x >= 50 else 'NÃO PAGO'
-            )
+            # Processar os dados usando nossa função personalizada
+            resultado_final = process_payment_data(combined_ap005, df_cnpj)
 
             # Exibição dos resultados
             st.success("Processamento concluído com sucesso!")
@@ -559,46 +515,56 @@ def menu_relatorio_marketup():
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total de CNPJs", len(resumo_pagamentos))
-                st.metric("CNPJs Pagos", 
-                         len(resumo_pagamentos[resumo_pagamentos['status'] == 'PAGO']))
+                total_cnpjs = len(resultado_final['CNPJ'].unique())
+                cnpjs_pagos = len(resultado_final[
+                    (resultado_final['STATUS_PAGAMENTO'].isin(['PAGO', 'PAGO PARCIALMENTE']))
+                ]['CNPJ'].unique())
+                
+                st.metric("Total de CNPJs", f"{total_cnpjs:,}")
+                st.metric("CNPJs Pagos", f"{cnpjs_pagos:,}")
+            
             with col2:
-                st.metric("Valor Total", 
-                        f"R$ {locale.format_string('%.2f', resumo_pagamentos['valor_a_pagar'].sum(), grouping=True)}")
-                st.metric("Valor Pago", 
-                        f"R$ {locale.format_string('%.2f', resumo_pagamentos['valor_liquidacao_efetiva'].sum(), grouping=True)}")
+                total_mensalidade = resultado_final['VALOR_MENSALIDADE'].apply(
+                    lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
+                ).sum()
+                
+                total_cobrado = resultado_final['VALOR_COBRADO'].apply(
+                    lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
+                ).sum()
+                
+                st.metric("Valor Total Mensalidade", 
+                         f"R$ {locale.format_string('%.2f', total_mensalidade, grouping=True)}")
+                st.metric("Valor Total Cobrado", 
+                         f"R$ {locale.format_string('%.2f', total_cobrado, grouping=True)}")
 
-            # Download dos resultados
+            # Download do resultado
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_path = f'relatorio_marketup_{timestamp}.xlsx'
+            save_to_excel(resultado_final, output_path)
             
-            st.markdown('### Download dos Relatórios')
+            with open(output_path, 'rb') as f:
+                excel_data = f.read()
             
-            # Convertendo para CSV
-            df_ap005_csv = df_ap005.to_csv(index=False)
-            resumo_csv = resumo_pagamentos.to_csv(index=False)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    label="Download Dados Completos",
-                    data=df_ap005_csv,
-                    file_name=f'relatorio_completo_{timestamp}.csv',
-                    mime='text/csv'
-                )
-            with col2:
-                st.download_button(
-                    label="Download Resumo",
-                    data=resumo_csv,
-                    file_name=f'resumo_pagamentos_{timestamp}.csv',
-                    mime='text/csv'
-                )
+            st.download_button(
+                label="Download Relatório Completo",
+                data=excel_data,
+                file_name=output_path,
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+
+            # Remover arquivo temporário
+            import os
+            os.remove(output_path)
 
         except Exception as e:
             st.error(f"Erro durante o processamento: {str(e)}")
+            st.error("Detalhes do erro para debug:")
+            import traceback
+            st.error(traceback.format_exc())
 
     if st.button("Voltar"):
         st.session_state.page = "home"
-
+        
 def menu_relatorio_financeiro():
     st.markdown('<div class="title">Relatório Financeiro</div>', unsafe_allow_html=True)
     st.write("Conteúdo do Relatório Financeiro.")

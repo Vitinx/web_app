@@ -1,184 +1,286 @@
 import pandas as pd
-import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
-import glob
+import numpy as np
+from datetime import datetime
 import locale
 
-# Configurar locale para formatação de números
+# Definir localidade para formatação de moeda
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
-def read_and_process_file(filepath):
-    # Nomes das colunas
-    colunas = [
-        "referencia_externa", "entidade_registradora", "instituicao_credenciadora",
-        "usuario_final_recebedor", "arranjo_pagamento", "data_liquidacao",
-        "titular_unidade_recebivel", "constituicao_unidade_recebivel", 
-        "valor_constituido_total", "valor_constituido_antecipacao_pre_contratado", 
-        "valor_bloqueado", "informacoes_pagamento", "carteira", 
-        "valor_livre", "valor_total_ur", "dt_atualizacao_ur"
-    ]
-
-    # Ler o arquivo usando o delimitador correto
-    df = pd.read_csv(filepath, sep=',', header=None, encoding='utf-8')
+def standardize_cnpj_columns(df_cnpj):
+    """
+    Padronizando os nomes das colunas do CNPJ DataFrame verificando diversas variações comuns.
+    """
+    column_mappings = {
+        'RAZAO_SOCIAL': [
+            'RAZAO_SOCIAL', 'RAZAO SOCIAL', 'razao_social', 'razao social',
+            'RAZAOSOCIAL', 'razaosocial', 'Razao Social', 'Razão Social',
+            'RAZÃO SOCIAL', 'razão_social', 'VALOR RAZAO SOCIAL'
+        ],
+        'NOME_FANTASIA': [
+            'NOME_FANTASIA', 'NOME FANTASIA', 'nome_fantasia', 'nome fantasia',
+            'NOMEFANTASIA', 'nomefantasia', 'Nome Fantasia', 'Nome fantasia',
+            'Nome_Fantasia'
+        ],
+        'CNPJ': [
+            'CNPJ', 'cnpj', 'Cnpj', 'CPF_CNPJ', 'cpf_cnpj', 'CPF/CNPJ',
+            'DOCUMENTO', 'documento'
+        ],
+        'CAMPANHA': [
+            'CAMPANHA', 'campanha', 'Campanha'
+        ]
+    }
     
-    # Verificar se temos colunas suficientes
-    if len(df.columns) >= len(colunas):
-        df = df.iloc[:, :len(colunas)]
-        df.columns = colunas
+    # Criando um mapeamento de nomes de colunas reais para nomes padronizados
+    new_columns = {}
+    for standard_name, variations in column_mappings.items():
+        for variant in variations:
+            if variant in df_cnpj.columns:
+                new_columns[variant] = standard_name
+                break
     
-    return df
-
-def process_payment_data(df):
-    # Definir as colunas para informações de pagamento
-    colunas_pagamento = [
-        "numero_documento_titular", "tipo_conta", "compe", "ispb", 
-        "agencia", "numero_conta", "valor_a_pagar", "beneficiario", 
-        "data_liquidacao_efetiva", "valor_liquidacao_efetiva", "regra_divisao",
-        "valor_onerado_unidade_recebivel", "tipo_informacao_pagamento", 
-        "indicador_ordem_efeito", "valor_constituido_contrato_unidade_recebivel"
-    ]
-
-    # Processar a coluna informacoes_pagamento
-    df['informacoes_pagamento'] = df['informacoes_pagamento'].astype(str)
-    info_pagamento = df['informacoes_pagamento'].str.split('|').str[0]
-    df_pagamento = info_pagamento.str.split(';', expand=True)
+    # Se não encontrou a coluna de nome fantasia, procura pelo nome exato da coluna
+    if 'Nome fantasia' in df_cnpj.columns:
+        new_columns['Nome fantasia'] = 'NOME_FANTASIA'
     
-    if df_pagamento is not None and len(df_pagamento.columns) >= len(colunas_pagamento):
-        df_pagamento = df_pagamento.iloc[:, :len(colunas_pagamento)]
-        df_pagamento.columns = colunas_pagamento
+    # Renomear colunas encontradas
+    if new_columns:
+        df_cnpj = df_cnpj.rename(columns=new_columns)
     
-    # Combinar os DataFrames
-    df_final = pd.concat([df.drop('informacoes_pagamento', axis=1), df_pagamento], axis=1)
-    
-    # Converter colunas de valor para numérico
-    colunas_valor = [
-        'valor_constituido_total', 'valor_constituido_antecipacao_pre_contratado',
-        'valor_bloqueado', 'valor_livre', 'valor_total_ur', 'valor_a_pagar',
-        'valor_liquidacao_efetiva', 'valor_onerado_unidade_recebivel',
-        'valor_constituido_contrato_unidade_recebivel'
-    ]
-
-    for coluna in colunas_valor:
-        if coluna in df_final.columns:
-            df_final[coluna] = pd.to_numeric(
-                df_final[coluna].astype(str)
-                .str.replace(',', '.')
-                .str.replace('R$', '')
-                .str.strip(),
-                errors='coerce'
-            ).fillna(0)
-
-    # Calcular status de pagamento
-    df_final['valor_esperado_por_plano'] = df_final.groupby('usuario_final_recebedor')['valor_a_pagar'].transform('sum') / 2
-    df_final['pago'] = df_final['data_liquidacao_efetiva'].notna() & (df_final['data_liquidacao_efetiva'] != '')
-    df_final['valor_pago'] = df_final['valor_liquidacao_efetiva']
-    df_final['percentual_pago'] = (df_final['valor_pago'] / df_final['valor_esperado_por_plano'] * 100)
-    df_final['status_pagamento'] = df_final['percentual_pago'].apply(lambda x: 'PAGO' if x >= 50 else 'NÃO PAGO')
-
-    return df_final
-
-def export_to_excel(df, filename, sheet_name='Sheet1'):
-    writer = pd.ExcelWriter(filename, engine='openpyxl')
-    df.to_excel(writer, sheet_name=sheet_name, index=False)
-    
-    workbook = writer.book
-    worksheet = writer.sheets[sheet_name]
-    
-    # Definir cores para status de pagamento
-    cor_pago = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')  # Verde claro
-    cor_nao_pago = PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid')  # Vermelho claro
-    
-    # Estilos
-    header_fill = PatternFill(start_color='366092', end_color='366092', fill_type='solid')
-    header_font = Font(color='FFFFFF', bold=True)
-    border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    
-    # Formatar cabeçalho
-    for col in range(1, df.shape[1] + 1):
-        cell = worksheet.cell(row=1, column=col)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        cell.border = border
-    
-    # Formatar células de dados
-    status_col = df.columns.get_loc('status_pagamento') + 1 if 'status_pagamento' in df.columns else None
-    
-    for row in range(2, df.shape[0] + 2):
-        for col in range(1, df.shape[1] + 1):
-            cell = worksheet.cell(row=row, column=col)
-            cell.border = border
-            
-            # Colorir linha baseado no status de pagamento
-            if status_col:
-                status = worksheet.cell(row=row, column=status_col).value
-                fill_color = cor_pago if status == 'PAGO' else cor_nao_pago
-                cell.fill = fill_color
-            
-            valor = df.iloc[row-2, col-1]
-            coluna_nome = df.columns[col-1].lower()
-            
-            if 'valor' in coluna_nome:
-                cell.number_format = '#,##0.00'
-                cell.alignment = Alignment(horizontal='right', vertical='center')
-            elif 'percentual' in coluna_nome:
-                cell.number_format = '#,##0.00"%"'
-                cell.alignment = Alignment(horizontal='right', vertical='center')
-            elif isinstance(valor, (int, float)):
-                cell.alignment = Alignment(horizontal='right', vertical='center')
+    # Garantir que as colunas existem com valores padrão apenas se necessário
+    required_cols = {'RAZAO_SOCIAL', 'NOME_FANTASIA', 'CNPJ', 'CAMPANHA'}
+    for col in required_cols:
+        if col not in df_cnpj.columns:
+            if col == 'CNPJ':
+                raise ValueError(f"Coluna CNPJ é obrigatória e não foi encontrada no arquivo.")
+            if col == 'CAMPANHA':
+                df_cnpj[col] = 'Anúncio'
             else:
-                cell.alignment = Alignment(horizontal='left', vertical='center')
+                df_cnpj[col] = df_cnpj['RAZAO_SOCIAL'] if col == 'NOME_FANTASIA' else 'NÃO INFORMADO'
     
-    # Ajustar largura das colunas
-    for col in range(df.shape[1]):
-        max_length = max(
-            df[df.columns[col]].astype(str).apply(len).max(),
-            len(str(df.columns[col]))
+    return df_cnpj
+
+def process_payment_data(df_ap005, df_cnpj):
+    """
+    Processa dados de pagamento do AP005 e CNPJ DataFrames
+    """
+    try:
+        # Padroniza as colunas do DataFrame CNPJ
+        df_cnpj = standardize_cnpj_columns(df_cnpj)
+        
+        # Converte os valores do CNPJ para numérico
+        df_cnpj['VALOR'] = pd.to_numeric(df_cnpj['VALOR'].astype(str).str.replace(',', '.'), errors='coerce')
+        
+        # Processa a coluna informacoes_pagamento do AP005
+        df_ap005['informacoes_pagamento'] = df_ap005['informacoes_pagamento'].str.split('|').str[0]
+        novas_colunas = [
+            "numero_documento_titular", "tipo_conta", "compe", "ispb", 
+            "agencia", "numero_conta", "valor_a_pagar", "beneficiario", 
+            "data_liquidacao_efetiva", "valor_liquidacao_efetiva", "regra_divisao",
+            "valor_onerado_unidade_recebivel", "tipo_informacao_pagamento", 
+            "indicador_ordem_efeito", "valor_constituido_contrato_unidade_recebivel"
+        ]
+        
+        # Separa as informações de pagamento
+        df_separado = df_ap005['informacoes_pagamento'].str.split(';', expand=True)
+        df_separado.columns = novas_colunas[:df_separado.shape[1]]
+        
+        # Adiciona as novas colunas ao DataFrame original
+        df_ap005 = pd.concat([df_ap005.drop('informacoes_pagamento', axis=1), df_separado], axis=1)
+        
+        # Converte valor_constituido_contrato_unidade_recebivel para numérico
+        df_ap005['valor_constituido_contrato_unidade_recebivel'] = pd.to_numeric(
+            df_ap005['valor_constituido_contrato_unidade_recebivel'].replace('', '0').fillna('0'),
+            errors='coerce'
         )
-        worksheet.column_dimensions[get_column_letter(col + 1)].width = min(max_length + 2, 50)
+        
+        # Converte data_liquidacao para datetime
+        df_ap005['data_liquidacao'] = pd.to_datetime(
+            df_ap005['data_liquidacao'], 
+            errors='coerce'
+        )
+        
+        # Remove duplicatas do AP005 antes de processar
+        df_ap005 = df_ap005.drop_duplicates(subset=['usuario_final_recebedor', 'valor_constituido_contrato_unidade_recebivel'])
+        
+        # Agrupa os valores totais de mensalidade por CNPJ
+        cnpj_mensalidades = df_cnpj.groupby('CNPJ').agg({
+            'VALOR': 'sum',
+            'RAZAO_SOCIAL': 'first',
+            'NOME_FANTASIA': 'first',
+            'CAMPANHA': 'first'
+        }).reset_index()
+        
+        # Calcula o valor total pago por CNPJ
+        def calculate_paid_amount(group):
+            # Filtra apenas as linhas com data de liquidação
+            paid_rows = group[group['data_liquidacao'].notna()]
+            if paid_rows.empty:
+                return 0
+                
+            # Pega o valor mais recente para cada CNPJ
+            latest_payment = paid_rows.sort_values('data_liquidacao', ascending=False).iloc[0]
+            return latest_payment['valor_constituido_contrato_unidade_recebivel']
+        
+        # Agrupa AP005 por CNPJ
+        grouped_ap005 = df_ap005.groupby('usuario_final_recebedor').agg({
+            'data_liquidacao': lambda x: x.max() if x.notna().any() else pd.NaT,
+            'referencia_externa': 'first'
+        }).reset_index()
+        
+        # Calcula valor total pago por CNPJ considerando apenas o pagamento mais recente
+        paid_amounts = df_ap005.groupby('usuario_final_recebedor').apply(calculate_paid_amount)
+        grouped_ap005['valor_pago'] = grouped_ap005['usuario_final_recebedor'].map(paid_amounts)
+        
+        # Merge dos dados
+        result = pd.merge(
+            grouped_ap005,
+            cnpj_mensalidades,
+            left_on='usuario_final_recebedor',
+            right_on='CNPJ',
+            how='inner'
+        )
+        
+        # Determina status de pagamento
+        def determine_status(row):
+            if pd.isna(row['data_liquidacao']):
+                return 'NÃO PAGO'
+            
+            valor_mensalidade = float(row['VALOR'])
+            valor_pago = float(row['valor_pago'])
+            
+            if valor_mensalidade == 0:
+                return 'NÃO PAGO'
+                
+            percentual_pago = (valor_pago / valor_mensalidade * 100)
+            
+            if percentual_pago >= 100:
+                return 'PAGO'
+            elif percentual_pago >= 50:
+                return 'PAGO PARCIALMENTE'
+            else:
+                return 'NÃO PAGO'
+        
+        result['status_pagamento'] = result.apply(determine_status, axis=1)
+        
+        # Usa RAZAO_SOCIAL quando NOME_FANTASIA estiver vazio
+        result['NOME_FANTASIA'] = result.apply(
+            lambda x: x['RAZAO_SOCIAL'] if pd.isna(x['NOME_FANTASIA']) or x['NOME_FANTASIA'].strip() == '' 
+            else x['NOME_FANTASIA'], 
+            axis=1
+        )
+        
+        # Cria resultado final
+        final_result = pd.DataFrame({
+            'ID': result['referencia_externa'],
+            'CNPJ': result['CNPJ'],
+            'CAMPANHA': result['CAMPANHA'],
+            'RAZAO_SOCIAL': result['RAZAO_SOCIAL'],
+            'NOME_FANTASIA': result['NOME_FANTASIA'],
+            'VALOR_MENSALIDADE': result['VALOR'],
+            'DATA_LIQUIDACAO': result['data_liquidacao'],
+            'VALOR_COBRADO': result['valor_pago'],
+            'STATUS_PAGAMENTO': result['status_pagamento']
+        })
+        
+        # Remove duplicatas mantendo apenas o registro mais recente por CNPJ
+        final_result = final_result.sort_values('DATA_LIQUIDACAO', ascending=False).drop_duplicates(subset=['CNPJ'])
+        
+        # Formata valores monetários
+        for col in ['VALOR_MENSALIDADE', 'VALOR_COBRADO']:
+            final_result[col] = final_result[col].apply(
+                lambda x: locale.currency(x, grouping=True, symbol=None) if pd.notnull(x) else '0,00'
+            )
+        
+        # Formata data
+        final_result['DATA_LIQUIDACAO'] = final_result['DATA_LIQUIDACAO'].apply(
+            lambda x: x.strftime('%d/%m/%Y') if pd.notnull(x) else ''
+        )
+        
+        return final_result
     
-    worksheet.auto_filter.ref = worksheet.dimensions
-    worksheet.freeze_panes = 'A2'
+    except Exception as e:
+        print(f"Erro detalhado: {str(e)}")
+        print("Colunas disponíveis no df_ap005:", df_ap005.columns)
+        raise Exception(f"Erro ao processar dados de pagamento: {str(e)}")
     
+def style_excel(writer, df):
+    """
+    Aplica estilização ao arquivo Excel
+    """
+    workbook = writer.book
+    worksheet = writer.sheets['Payments']
+    
+    # Define formatos
+    header_format = workbook.add_format({
+        'bold': True,
+        'text_wrap': True,
+        'valign': 'top',
+        'fg_color': '#D7E4BC',
+        'border': 1
+    })
+    
+    # Adiciona mais formatos para melhor visualização
+    money_format = workbook.add_format({
+        'num_format': 'R$ #,##0.00',
+        'border': 1
+    })
+    
+    date_format = workbook.add_format({
+        'num_format': 'dd/mm/yyyy',
+        'border': 1
+    })
+    
+    # Formato padrão para células
+    cell_format = workbook.add_format({
+        'border': 1,
+        'align': 'center'
+    })
+    
+    # Aplica formatos
+    for idx, col in enumerate(df.columns):
+        # Ajusta largura da coluna baseado no conteúdo
+        max_length = max(df[col].astype(str).apply(len).max(), len(col))
+        worksheet.set_column(idx, idx, max_length + 2)
+        
+        # Aplica formatos específicos para cada tipo de coluna
+        if 'VALOR' in col:
+            worksheet.set_column(idx, idx, max_length + 2, money_format)
+        elif 'DATA' in col:
+            worksheet.set_column(idx, idx, max_length + 2, date_format)
+        else:
+            worksheet.set_column(idx, idx, max_length + 2, cell_format)
+    
+    # Escreve cabeçalhos com formato
+    for col_num, value in enumerate(df.columns.values):
+        worksheet.write(0, col_num, value, header_format)
+    
+    # Adiciona cores alternadas nas linhas
+    for row_num in range(1, len(df) + 1):
+        row_format = workbook.add_format({
+            'bg_color': '#F0F0F0' if row_num % 2 == 0 else '#FFFFFF',
+            'border': 1
+        })
+        
+        for col_num in range(len(df.columns)):
+            value = df.iloc[row_num-1, col_num]
+            if pd.isna(value):
+                worksheet.write_string(row_num, col_num, '', row_format)
+            else:
+                worksheet.write(row_num, col_num, value, row_format)
+
+def save_to_excel(df, output_path):
+    """
+    Salva os dados processados em um arquivo Excel estilizado
+    """
+    writer = pd.ExcelWriter(output_path, engine='xlsxwriter')
+    df.to_excel(writer, sheet_name='Payments', index=False)
+    style_excel(writer, df)
     writer.close()
 
-def main():
-    # Caminho do arquivo
-    path = 'arquivos_retorno/CERC-AP005_52541797_20241230_0000001_ret'
-    arquivos = glob.glob(path)
-    
-    if not arquivos:
-        print("Nenhum arquivo encontrado")
-        return
-    
-    # Ler e processar o arquivo
-    df_inicial = read_and_process_file(arquivos[0])
-    if df_inicial is None:
-        return
-    
-    # Processar dados de pagamento
-    df_processado = process_payment_data(df_inicial)
-    
-    # Criar resumo por CNPJ
-    resumo_cnpj = df_processado.groupby('usuario_final_recebedor').agg({
-        'valor_a_pagar': 'sum',
-        'valor_pago': 'sum',
-        'pago': 'sum',
-        'status_pagamento': lambda x: x.value_counts().index[0]
-    }).reset_index()
-    
-    # Calcular percentual total pago
-    resumo_cnpj['percentual_total_pago'] = (resumo_cnpj['valor_pago'] / resumo_cnpj['valor_a_pagar'] * 100).round(2)
-    
-    # Exportar resultados
-    export_to_excel(df_processado, 'resultado_analise_pagamentos.xlsx', 'Análise Pagamentos')
-    export_to_excel(resumo_cnpj, 'resumo_cnpj_pagamentos.xlsx', 'Resumo CNPJ')
-
-if __name__ == "__main__":
-    main()
+def main(ap005_df, cnpj_df, output_path):
+    try:
+        result_df = process_payment_data(ap005_df, cnpj_df)
+        save_to_excel(result_df, output_path)
+        return True, result_df
+    except Exception as e:
+        return False, str(e)
