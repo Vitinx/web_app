@@ -56,12 +56,32 @@ def standardize_cnpj_columns(df_cnpj):
                 df_cnpj[col] = 'Anúncio'
             else:
                 df_cnpj[col] = df_cnpj['RAZAO_SOCIAL'] if col == 'NOME_FANTASIA' else 'NÃO INFORMADO'
+
+    # # Remove pontos e traços do CNPJ (WIP)
+    # df_cnpj['CNPJ'] = df_cnpj['CNPJ'].astype(str).str.replace('[^0-9]', '', regex=True)
+
+    # # Remove duplicatas pelo CNPJ, mantendo a primeira ocorrência
+    # df_cnpj = df_cnpj.drop_duplicates(subset=['CNPJ'], keep='first')
+
     
     return df_cnpj
 
+def calculate_paid_amount(group):
+    """
+    Calcula o valor total pago por CNPJ somando todos os valores constituídos
+    """
+    # Filtra apenas as linhas com data de liquidação
+    paid_rows = group[group['data_liquidacao'].notna()]
+    if paid_rows.empty:
+        return 0
+    
+    # Soma todos os valores constituídos para o CNPJ
+    total_value = paid_rows['valor_constituido_contrato_unidade_recebivel'].sum()
+    return total_value
+
 def process_payment_data(df_ap005, df_cnpj):
     """
-    Processa dados de pagamento do AP005 e CNPJ DataFrames
+    Processa dados de pagamento com correção no processamento dos valores
     """
     try:
         # Padroniza as colunas do DataFrame CNPJ
@@ -70,8 +90,19 @@ def process_payment_data(df_ap005, df_cnpj):
         # Converte os valores do CNPJ para numérico
         df_cnpj['VALOR'] = pd.to_numeric(df_cnpj['VALOR'].astype(str).str.replace(',', '.'), errors='coerce')
         
-        # Processa a coluna informacoes_pagamento do AP005
+        # Converte usuario_final_recebedor para string
+        df_ap005['usuario_final_recebedor'] = df_ap005['usuario_final_recebedor'].astype(str).str.replace('[^0-9]', '', regex=True)
+        
+        # Remove pontos e traços do CNPJ
+        df_cnpj['CNPJ'] = df_cnpj['CNPJ'].astype(str).str.replace('[^0-9]', '', regex=True)
+        
+        # Processamento da coluna informacoes_pagamento seguindo exatamente o script
         df_ap005['informacoes_pagamento'] = df_ap005['informacoes_pagamento'].str.split('|').str[0]
+        
+        # Separa as informações de pagamento
+        df_separado = df_ap005['informacoes_pagamento'].str.split(';', expand=True)
+        
+        # Define as novas colunas
         novas_colunas = [
             "numero_documento_titular", "tipo_conta", "compe", "ispb", 
             "agencia", "numero_conta", "valor_a_pagar", "beneficiario", 
@@ -80,12 +111,14 @@ def process_payment_data(df_ap005, df_cnpj):
             "indicador_ordem_efeito", "valor_constituido_contrato_unidade_recebivel"
         ]
         
-        # Separa as informações de pagamento
-        df_separado = df_ap005['informacoes_pagamento'].str.split(';', expand=True)
+        # Atribui nomes às colunas
         df_separado.columns = novas_colunas[:df_separado.shape[1]]
         
-        # Adiciona as novas colunas ao DataFrame original
-        df_ap005 = pd.concat([df_ap005.drop('informacoes_pagamento', axis=1), df_separado], axis=1)
+        # Concatena com o DataFrame original
+        df_ap005 = pd.concat([
+            df_ap005.drop('informacoes_pagamento', axis=1),
+            df_separado
+        ], axis=1)
         
         # Converte valor_constituido_contrato_unidade_recebivel para numérico
         df_ap005['valor_constituido_contrato_unidade_recebivel'] = pd.to_numeric(
@@ -93,48 +126,22 @@ def process_payment_data(df_ap005, df_cnpj):
             errors='coerce'
         )
         
-        # Converte data_liquidacao para datetime
+        # Converte data_liquidacao_efetiva para datetime
         df_ap005['data_liquidacao'] = pd.to_datetime(
-            df_ap005['data_liquidacao'], 
+            df_ap005['data_liquidacao_efetiva'],
             errors='coerce'
         )
         
-        # Remove duplicatas do AP005 antes de processar
-        df_ap005 = df_ap005.drop_duplicates(subset=['usuario_final_recebedor', 'valor_constituido_contrato_unidade_recebivel'])
-        
-        # Agrupa os valores totais de mensalidade por CNPJ
-        cnpj_mensalidades = df_cnpj.groupby('CNPJ').agg({
-            'VALOR': 'sum',
-            'RAZAO_SOCIAL': 'first',
-            'NOME_FANTASIA': 'first',
-            'CAMPANHA': 'first'
+        # Agrupa por usuário final recebedor
+        df_grouped = df_ap005.groupby('usuario_final_recebedor').agg({
+            'valor_constituido_contrato_unidade_recebivel': 'sum',
+            'data_liquidacao': 'max'
         }).reset_index()
         
-        # Calcula o valor total pago por CNPJ
-        def calculate_paid_amount(group):
-            # Filtra apenas as linhas com data de liquidação
-            paid_rows = group[group['data_liquidacao'].notna()]
-            if paid_rows.empty:
-                return 0
-                
-            # Pega o valor mais recente para cada CNPJ
-            latest_payment = paid_rows.sort_values('data_liquidacao', ascending=False).iloc[0]
-            return latest_payment['valor_constituido_contrato_unidade_recebivel']
-        
-        # Agrupa AP005 por CNPJ
-        grouped_ap005 = df_ap005.groupby('usuario_final_recebedor').agg({
-            'data_liquidacao': lambda x: x.max() if x.notna().any() else pd.NaT,
-            'referencia_externa': 'first'
-        }).reset_index()
-        
-        # Calcula valor total pago por CNPJ considerando apenas o pagamento mais recente
-        paid_amounts = df_ap005.groupby('usuario_final_recebedor').apply(calculate_paid_amount)
-        grouped_ap005['valor_pago'] = grouped_ap005['usuario_final_recebedor'].map(paid_amounts)
-        
-        # Merge dos dados
+        # Merge com dados de CNPJ
         result = pd.merge(
-            grouped_ap005,
-            cnpj_mensalidades,
+            df_grouped,
+            df_cnpj,
             left_on='usuario_final_recebedor',
             right_on='CNPJ',
             how='inner'
@@ -142,48 +149,35 @@ def process_payment_data(df_ap005, df_cnpj):
         
         # Determina status de pagamento
         def determine_status(row):
+            # Primeiro, verifica se há data de liquidação
             if pd.isna(row['data_liquidacao']):
                 return 'NÃO PAGO'
             
             valor_mensalidade = float(row['VALOR'])
-            valor_pago = float(row['valor_pago'])
+            valor_pago = float(row['valor_constituido_contrato_unidade_recebivel'])
             
-            if valor_mensalidade == 0:
-                return 'NÃO PAGO'
-                
-            percentual_pago = (valor_pago / valor_mensalidade * 100)
+            # Calcula percentual pago
+            percentual_pago = (valor_pago / valor_mensalidade * 100) if valor_mensalidade > 0 else 0
             
-            if percentual_pago >= 100:
-                return 'PAGO'
-            elif percentual_pago >= 50:
-                return 'PAGO PARCIALMENTE'
-            else:
-                return 'NÃO PAGO'
+            # Retorna NÃO PAGO se o percentual for menor que 50%
+            return 'PAGO' if percentual_pago >= 50 else 'NÃO PAGO'
         
-        result['status_pagamento'] = result.apply(determine_status, axis=1)
-        
-        # Usa RAZAO_SOCIAL quando NOME_FANTASIA estiver vazio
-        result['NOME_FANTASIA'] = result.apply(
-            lambda x: x['RAZAO_SOCIAL'] if pd.isna(x['NOME_FANTASIA']) or x['NOME_FANTASIA'].strip() == '' 
-            else x['NOME_FANTASIA'], 
-            axis=1
-        )
-        
-        # Cria resultado final
+        # Criar DataFrame final
         final_result = pd.DataFrame({
-            'ID': result['referencia_externa'],
+            'ID': result['ID'],
             'CNPJ': result['CNPJ'],
             'CAMPANHA': result['CAMPANHA'],
             'RAZAO_SOCIAL': result['RAZAO_SOCIAL'],
-            'NOME_FANTASIA': result['NOME_FANTASIA'],
+            'NOME_FANTASIA': result.apply(
+                lambda x: x['RAZAO_SOCIAL'] if pd.isna(x['NOME_FANTASIA']) or x['NOME_FANTASIA'].strip() == '' 
+                else x['NOME_FANTASIA'], 
+                axis=1
+            ),
             'VALOR_MENSALIDADE': result['VALOR'],
             'DATA_LIQUIDACAO': result['data_liquidacao'],
-            'VALOR_COBRADO': result['valor_pago'],
-            'STATUS_PAGAMENTO': result['status_pagamento']
+            'VALOR_COBRADO': result['valor_constituido_contrato_unidade_recebivel'],
+            'STATUS_PAGAMENTO': result.apply(determine_status, axis=1)
         })
-        
-        # Remove duplicatas mantendo apenas o registro mais recente por CNPJ
-        final_result = final_result.sort_values('DATA_LIQUIDACAO', ascending=False).drop_duplicates(subset=['CNPJ'])
         
         # Formata valores monetários
         for col in ['VALOR_MENSALIDADE', 'VALOR_COBRADO']:

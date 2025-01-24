@@ -481,12 +481,15 @@ def menu_relatorio_marketup():
             # Processar cada arquivo AP005
             for ap005_file in uploaded_ap005_files:
                 if ap005_file.name.endswith('.xlsx'):
-                    df = pd.read_excel(ap005_file, header=None)
+                    df = pd.read_excel(ap005_file)
                 else:
-                    df = pd.read_csv(ap005_file, header=None, delimiter=';')
+                    df = pd.read_csv(ap005_file, delimiter=';')
+                
+                # Verificar o número de colunas
+                num_colunas = len(df.columns)
                 
                 # Definindo colunas do AP005
-                colunas = [
+                colunas_base = [
                     "referencia_externa", "entidade_registradora", 
                     "instituicao_credenciadora", "usuario_final_recebedor", 
                     "arranjo_pagamento", "data_liquidacao",
@@ -495,7 +498,21 @@ def menu_relatorio_marketup():
                     "valor_bloqueado", "informacoes_pagamento", "carteira", 
                     "valor_livre", "valor_total_ur", "dt_atualizacao_ur"
                 ]
+                
+                # Se o DataFrame tem mais colunas que o esperado, adiciona nomes genéricos
+                if num_colunas > len(colunas_base):
+                    colunas_extras = [f"coluna_{i}" for i in range(len(colunas_base), num_colunas)]
+                    colunas = colunas_base + colunas_extras
+                else:
+                    colunas = colunas_base[:num_colunas]
+                
+                # Atribui os nomes das colunas
                 df.columns = colunas
+                
+                # Seleciona apenas as colunas necessárias
+                colunas_necessarias = [col for col in colunas_base if col in df.columns]
+                df = df[colunas_necessarias]
+                
                 all_ap005_dfs.append(df)
 
             # Concatenar todos os DataFrames AP005
@@ -564,7 +581,6 @@ def menu_relatorio_marketup():
 
     if st.button("Voltar"):
         st.session_state.page = "home"
-        
 def menu_relatorio_financeiro():
     st.markdown('<div class="title">Relatório Financeiro</div>', unsafe_allow_html=True)
     st.write("Conteúdo do Relatório Financeiro.")
