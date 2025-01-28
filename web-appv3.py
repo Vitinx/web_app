@@ -5,7 +5,22 @@ import pandas as pd
 import datetime
 from datetime import datetime
 import locale
-from processar_pagamentos import *  
+from atualizacao_contratos_ap007a import *
+from atualizacao_contratos_ap007b import *
+from atualizacao_optin_agenda_ap004 import *
+from criacao_contratos_ap007a import *
+from criacao_contratos_ap007b import *
+from criacao_optin_agenda_ap004 import *
+from inativacao_contratos_ap007a import *
+from inativacao_contratos_ap007b import *
+from inativacao_optin_agenda_ap006 import *
+from processar_arquivos_ap007a import *
+from processar_arquivos_ap007b import *
+from processar_casos_especificos_inativacao import *
+from processar_cnpj_cobranca import *
+from processar_pagamentos import * 
+from processar_um_arquivo_ap007a import *
+
 
 # Configurar o locale para formato brasileiro
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
