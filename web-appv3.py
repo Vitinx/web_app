@@ -453,10 +453,8 @@ def menu_relatorio_marketup():
     st.markdown('<div class="title">Relatório MarketUP</div>', unsafe_allow_html=True)
     st.markdown('<div class="centered">', unsafe_allow_html=True)
 
-    # File uploaders for AP005 files and CNPJ file
     st.markdown('<div class="subtitle">Arquivos de Entrada</div>', unsafe_allow_html=True)
     
-    # Permitir múltiplos arquivos AP005
     uploaded_ap005_files = st.file_uploader("Selecione os arquivos AP005", 
                                           type=['csv', 'xlsx'], 
                                           accept_multiple_files=True)
@@ -467,64 +465,83 @@ def menu_relatorio_marketup():
         if not uploaded_ap005_files or uploaded_cnpj is None:
             st.error("Por favor, faça upload de pelo menos um arquivo AP005 e o arquivo de CNPJs agrupados")
             return
-
         try:
-            # Ler arquivo de CNPJs
+            # Add progress bar
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Read CNPJ file
+            status_text.text("Lendo arquivo de CNPJs...")
             if uploaded_cnpj.name.endswith('.xlsx'):
                 df_cnpj = pd.read_excel(uploaded_cnpj)
             else:
                 df_cnpj = pd.read_csv(uploaded_cnpj, delimiter=';')
 
-            # Lista para armazenar todos os DataFrames AP005
+            # Process AP005 files in batches
+            batch_size = 10
             all_ap005_dfs = []
-
-            # Processar cada arquivo AP005
-            for ap005_file in uploaded_ap005_files:
-                if ap005_file.name.endswith('.xlsx'):
-                    df = pd.read_excel(ap005_file)
-                else:
-                    df = pd.read_csv(ap005_file, delimiter=';')
-                
-                # Verificar o número de colunas
-                num_colunas = len(df.columns)
-                
-                # Definindo colunas do AP005
-                colunas_base = [
-                    "referencia_externa", "entidade_registradora", 
-                    "instituicao_credenciadora", "usuario_final_recebedor", 
-                    "arranjo_pagamento", "data_liquidacao",
-                    "titular_unidade_recebivel", "constituicao_unidade_recebivel", 
-                    "valor_constituido_total", "valor_constituido_antecipacao_pre_contratado", 
-                    "valor_bloqueado", "informacoes_pagamento", "carteira", 
-                    "valor_livre", "valor_total_ur", "dt_atualizacao_ur"
-                ]
-                
-                # Se o DataFrame tem mais colunas que o esperado, adiciona nomes genéricos
-                if num_colunas > len(colunas_base):
-                    colunas_extras = [f"coluna_{i}" for i in range(len(colunas_base), num_colunas)]
-                    colunas = colunas_base + colunas_extras
-                else:
-                    colunas = colunas_base[:num_colunas]
-                
-                # Atribui os nomes das colunas
-                df.columns = colunas
-                
-                # Seleciona apenas as colunas necessárias
-                colunas_necessarias = [col for col in colunas_base if col in df.columns]
-                df = df[colunas_necessarias]
-                
-                all_ap005_dfs.append(df)
-
-            # Concatenar todos os DataFrames AP005
-            combined_ap005 = pd.concat(all_ap005_dfs, ignore_index=True)
+            total_files = len(uploaded_ap005_files)
             
-            # Remover duplicatas baseadas em todas as colunas
+            for i in range(0, total_files, batch_size):
+                batch_files = uploaded_ap005_files[i:i + batch_size]
+                
+                for idx, ap005_file in enumerate(batch_files):
+                    try:
+                        status_text.text(f"Processando arquivo {i + idx + 1} de {total_files}...")
+                        progress_bar.progress((i + idx + 1) / total_files)
+                        
+                        if ap005_file.name.endswith('.xlsx'):
+                            df = pd.read_excel(ap005_file)
+                        else:
+                            df = pd.read_csv(ap005_file, delimiter=';')
+                        
+                        # Clear memory of file contents
+                        ap005_file.seek(0)
+                        
+                        # Process columns
+                        num_colunas = len(df.columns)
+                        colunas_base = [
+                            "referencia_externa", "entidade_registradora", 
+                            "instituicao_credenciadora", "usuario_final_recebedor", 
+                            "arranjo_pagamento", "data_liquidacao",
+                            "titular_unidade_recebivel", "constituicao_unidade_recebivel", 
+                            "valor_constituido_total", "valor_constituido_antecipacao_pre_contratado", 
+                            "valor_bloqueado", "informacoes_pagamento", "carteira", 
+                            "valor_livre", "valor_total_ur", "dt_atualizacao_ur"
+                        ]
+                        
+                        if num_colunas > len(colunas_base):
+                            colunas_extras = [f"coluna_{i}" for i in range(len(colunas_base), num_colunas)]
+                            colunas = colunas_base + colunas_extras
+                        else:
+                            colunas = colunas_base[:num_colunas]
+                        
+                        df.columns = colunas
+                        
+                        colunas_necessarias = [col for col in colunas_base if col in df.columns]
+                        df = df[colunas_necessarias]
+                        
+                        all_ap005_dfs.append(df)
+                        
+                        # Clear memory
+                        del df
+                        
+                    except Exception as e:
+                        st.warning(f"Erro ao processar arquivo {ap005_file.name}: {str(e)}")
+                        continue
+
+            status_text.text("Combinando dados...")
+            # Combine dataframes efficiently
+            combined_ap005 = pd.concat(all_ap005_dfs, ignore_index=True)
             combined_ap005 = combined_ap005.drop_duplicates()
 
-            # Processar os dados usando nossa função personalizada
+            # Clear memory
+            del all_ap005_dfs
+
+            status_text.text("Processando resultados...")
             resultado_final = process_payment_data(combined_ap005, df_cnpj)
 
-            # Exibição dos resultados
+            # Display results
             st.success("Processamento concluído com sucesso!")
             
             st.markdown('<div class="subtitle">Resumo de Pagamentos</div>', 
@@ -581,6 +598,7 @@ def menu_relatorio_marketup():
 
     if st.button("Voltar"):
         st.session_state.page = "home"
+
 def menu_relatorio_financeiro():
     st.markdown('<div class="title">Relatório Financeiro</div>', unsafe_allow_html=True)
     st.write("Conteúdo do Relatório Financeiro.")
