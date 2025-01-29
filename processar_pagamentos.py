@@ -41,6 +41,9 @@ def standardize_cnpj_columns(df_cnpj):
         ],
         'CAMPANHA': [
             'CAMPANHA', 'campanha', 'Campanha'
+        ],
+        'ID': [
+            'ID', 'id', 'Id'
         ]
     }
     
@@ -150,6 +153,12 @@ def process_payment_data(df_ap005, df_cnpj):
         # Remove registros duplicados considerando todas as colunas
         df_ap005 = df_ap005.drop_duplicates()
         
+        # Converte o número do documento do titular para string
+        df_ap005['numero_documento_titular'] =  df_ap005['numero_documento_titular'].astype(str)
+        
+        # Filtra apenas o documento do titular: '13998916000124'
+        df_ap005 = df_ap005[df_ap005['numero_documento_titular'] == '13998916000124']
+        
         # Agrupa por usuário final recebedor, mas só considera valores onde há data de liquidação
         df_grouped = df_ap005.groupby('usuario_final_recebedor').agg({
             'valor_constituido_contrato_unidade_recebivel': 'sum',
@@ -158,11 +167,11 @@ def process_payment_data(df_ap005, df_cnpj):
         
         # Merge com dados de CNPJ
         result = pd.merge(
-            df_grouped,
             df_cnpj,
-            left_on='usuario_final_recebedor',
-            right_on='CNPJ',
-            how='inner'
+            df_grouped,
+            left_on='CNPJ',
+            right_on='usuario_final_recebedor',
+            how='left'
         )
         
         # Determina status de pagamento com nova lógica
@@ -179,6 +188,7 @@ def process_payment_data(df_ap005, df_cnpj):
         
         # Criar DataFrame final com nova lógica para valor cobrado e data
         final_result = pd.DataFrame({
+            'ID': result['ID'],
             'CNPJ': result['CNPJ'],
             'CAMPANHA': result['CAMPANHA'],
             'RAZAO_SOCIAL': result['RAZAO_SOCIAL'],
