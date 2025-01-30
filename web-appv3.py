@@ -641,4 +641,3 @@ elif st.session_state.page == "menu_relatorio_marketup":
     menu_relatorio_marketup()
 elif st.session_state.page == "menu_relatorio_financeiro":
     menu_relatorio_financeiro()
-

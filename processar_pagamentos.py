@@ -89,6 +89,74 @@ def standardize_cnpj_columns(df_cnpj):
     
     return df_cnpj
 
+def calculate_proportional_payment(group):
+    """
+    Calcula a distribuição proporcional do valor pago entre os diferentes planos de um CNPJ,
+    mantendo a proporcionalidade baseada no valor da mensalidade e agrupando planos de mesmo valor
+    """
+    # Soma o valor total das mensalidades do CNPJ
+    total_mensalidade = group['VALOR'].sum()
+    if total_mensalidade == 0:
+        return pd.DataFrame({
+            'VALOR_COBRADO': [0] * len(group),
+            'STATUS_PAGAMENTO': ['NÃO PAGO'] * len(group)
+        })
+    
+    # Valor total pago pelo CNPJ
+    total_pago = group['valor_constituido_contrato_unidade_recebivel'].iloc[0]
+    if total_pago == 0:
+        return pd.DataFrame({
+            'VALOR_COBRADO': [0] * len(group),
+            'STATUS_PAGAMENTO': ['NÃO PAGO'] * len(group)
+        })
+    
+    # Agrupa planos pelo mesmo valor de mensalidade
+    planos_agrupados = group.groupby('VALOR')
+    
+    # Dicionário para armazenar os valores distribuídos
+    valores_distribuidos = {}
+    
+    # Para cada grupo de planos com mesmo valor
+    for valor_mensalidade, planos in planos_agrupados:
+        # Quantidade de planos com este valor
+        qt_planos = len(planos)
+        
+        # Calcula a proporção deste grupo em relação ao total
+        proporcao_grupo = (valor_mensalidade * qt_planos) / total_mensalidade
+        
+        # Valor total para este grupo de planos
+        valor_grupo = (total_pago * proporcao_grupo).round(2)
+        
+        # Distribui igualmente entre os planos do mesmo valor
+        valor_por_plano = (valor_grupo / qt_planos).round(2)
+        
+        # Armazena o valor para cada plano deste grupo
+        for idx in planos.index:
+            valores_distribuidos[idx] = valor_por_plano
+    
+    # Converte para lista mantendo a ordem original
+    valor_cobrado = [valores_distribuidos[idx] for idx in group.index]
+    
+    # Ajusta diferença por arredondamento no primeiro valor
+    diferenca = total_pago - sum(valor_cobrado)
+    if abs(diferenca) > 0.01:  # Se a diferença for maior que 1 centavo
+        valor_cobrado[0] += diferenca
+    
+    # Calcula o percentual pago para cada plano
+    percentual_pago = [
+        (valor / mensalidade * 100) 
+        for valor, mensalidade in zip(valor_cobrado, group['VALOR'])
+    ]
+    
+    # Define o status com base no percentual pago
+    status = ['PAGO' if perc >= 50 else 'NÃO PAGO' for perc in percentual_pago]
+    
+    return pd.DataFrame({
+        'VALOR_COBRADO': valor_cobrado,
+        'STATUS_PAGAMENTO': status
+    })
+
+
 def process_payment_data(df_ap005, df_cnpj):
     """
     Processa dados de pagamento com correção no processamento dos valores
@@ -165,7 +233,7 @@ def process_payment_data(df_ap005, df_cnpj):
             'data_liquidacao': 'max'
         }).reset_index()
         
-        # Merge com dados de CNPJ
+       # Merge com dados de CNPJ
         result = pd.merge(
             df_cnpj,
             df_grouped,
@@ -174,19 +242,18 @@ def process_payment_data(df_ap005, df_cnpj):
             how='left'
         )
         
-        # Determina status de pagamento com nova lógica
-        def determine_status(row):
-            if pd.isna(row['data_liquidacao']) or float(row['valor_constituido_contrato_unidade_recebivel']) == 0:
-                return 'NÃO PAGO'
-            
-            valor_mensalidade = float(row['VALOR'])
-            valor_pago = float(row['valor_constituido_contrato_unidade_recebivel'])
-            
-            percentual_pago = (valor_pago / valor_mensalidade * 100) if valor_mensalidade > 0 else 0
-            
-            return 'PAGO' if percentual_pago >= 50 else 'NÃO PAGO'
+        # Agrupa por CNPJ e aplica a distribuição proporcional
+        payment_distribution = result.groupby('CNPJ').apply(calculate_proportional_payment).reset_index()
         
-        # Criar DataFrame final com nova lógica para valor cobrado e data
+        # Merge do resultado da distribuição com o resultado original
+        result = result.merge(
+            payment_distribution,
+            left_on='CNPJ',
+            right_on='CNPJ',
+            how='left'
+        )
+        
+        # Criar DataFrame final
         final_result = pd.DataFrame({
             'ID': result['ID'],
             'CNPJ': result['CNPJ'],
@@ -202,17 +269,14 @@ def process_payment_data(df_ap005, df_cnpj):
                 lambda x: x['data_liquidacao'] if pd.notnull(x['data_liquidacao']) and float(x['valor_constituido_contrato_unidade_recebivel']) > 0 else None,
                 axis=1
             ),
-            'VALOR_COBRADO': result.apply(
-                lambda x: x['valor_constituido_contrato_unidade_recebivel'] if pd.notnull(x['data_liquidacao']) else 0,
-                axis=1
-            ),
-            'STATUS_PAGAMENTO': result.apply(determine_status, axis=1)
+            'VALOR_COBRADO': result['VALOR_COBRADO'],
+            'STATUS_PAGAMENTO': result['STATUS_PAGAMENTO']
         })
         
         # Formata valores monetários
         for col in ['VALOR_MENSALIDADE', 'VALOR_COBRADO']:
             final_result[col] = final_result[col].apply(
-                lambda x: locale.currency(x, grouping=True, symbol=None) if pd.notnull(x) else '0,00'
+                lambda x: locale.currency(float(x), grouping=True, symbol=None) if pd.notnull(x) else '0,00'
             )
         
         # Formata data
@@ -221,7 +285,7 @@ def process_payment_data(df_ap005, df_cnpj):
         )
         
         return final_result
-    
+        
     except Exception as e:
         print(f"Erro detalhado: {str(e)}")
         print("Colunas disponíveis no df_ap005:", df_ap005.columns)
