@@ -47,6 +47,12 @@ prefixos_meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set',
 # Usa o número do mês para obter o prefixo correspondente
 prefixo_mes = prefixos_meses[mes_atual.month - 1]
 
+# Formatação monetária sem 'locale'   
+def format_currency(value):
+    if pd.notnull(value):
+        return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return "0,00"   
+
 # Função para obter o caminho da pasta
 def obter_caminho_pasta(file):
     if file is not None:
@@ -632,10 +638,13 @@ def menu_relatorio_marketup():
                         lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
                     ).sum()
                     
-                    st.metric("Valor Total Mensalidade", 
-                             f"R$ {locale.format_string('%.2f', total_mensalidade, grouping=True)}")
-                    st.metric("Valor Total Cobrado", 
-                             f"R$ {locale.format_string('%.2f', total_cobrado, grouping=True)}")
+                    # st.metric("Valor Total Mensalidade", 
+                    #          f"R$ {locale.format_string('%.2f', total_mensalidade, grouping=True)}")
+                    # st.metric("Valor Total Cobrado", 
+                    #          f"R$ {locale.format_string('%.2f', total_cobrado, grouping=True)}")
+                    
+                    st.metric("Valor Total Mensalidade", format_currency(total_mensalidade))
+                    st.metric("Valor Total Cobrado", format_currency(total_cobrado))
 
                 # Download do resultado
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
