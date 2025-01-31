@@ -476,23 +476,46 @@ def menu_relatorio_marketup():
     uploaded_cnpj = st.file_uploader("Selecione o arquivo de CNPJs agrupados", 
                                     type=['csv', 'xlsx'])
 
+    # Adiciona checkbox para ativar filtros de data
+    enable_date_filter = st.checkbox("Ativar filtros de data?")
+    
+    # Inicializa as variáveis de data
+    start_date = None
+    end_date = None
+    
+    # Se o checkbox estiver marcado, mostra os seletores de data
+    if enable_date_filter:
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input("Data de início", 
+                                     value=None,
+                                     format="YYYY-MM-DD")
+        with col2:
+            end_date = st.date_input("Data final",
+                                   value=None,
+                                   format="YYYY-MM-DD")
+        
+        if start_date and end_date and start_date > end_date:
+            st.error("A data de início deve ser anterior à data final!")
+            return
+
     if st.button("Processar Arquivos"):
         if not uploaded_ap005_files or uploaded_cnpj is None:
             st.error("Por favor, faça upload de pelo menos um arquivo AP005 e o arquivo de CNPJs agrupados")
             return
         try:
-            # Add progress bar
+            # Adiciona barra de progresso e texto de status
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # Read CNPJ file
+            # Lendo arquivo de CNPJs
             status_text.text("Lendo arquivo de CNPJs...")
             if uploaded_cnpj.name.endswith('.xlsx'):
                 df_cnpj = pd.read_excel(uploaded_cnpj)
             else:
                 df_cnpj = pd.read_csv(uploaded_cnpj, delimiter=';')
 
-            # Process AP005 files in batches
+            # Processando arquivos AP005
             batch_size = 10
             all_ap005_dfs = []
             total_files = len(uploaded_ap005_files)
@@ -510,10 +533,10 @@ def menu_relatorio_marketup():
                         else:
                             df = pd.read_csv(ap005_file, delimiter=';')
                         
-                        # Clear memory of file contents
+                        # Limpando memória dos arquivos
                         ap005_file.seek(0)
                         
-                        # Process columns
+                        # Processando colunas
                         num_colunas = len(df.columns)
                         colunas_base = [
                             "referencia_externa", "entidade_registradora", 
@@ -533,12 +556,28 @@ def menu_relatorio_marketup():
                         
                         df.columns = colunas
                         
+                        # Se o filtro de data estiver ativo, aplica o filtro
+                        if enable_date_filter and start_date and end_date:
+                            # Processa a coluna 12 (informacoes_pagamento) para extrair a data
+                            if 'data_liquidacao' in df.columns:
+                                df['data_liquidacao'] = pd.to_datetime(df['data_liquidacao'], errors='coerce')
+                            else:
+                                st.warning(f"O arquivo {ap005_file.name} não contém a coluna 'data_liquidacao'. Será ignorado.")
+                                continue  # Ignora arquivos sem essa coluna
+
+                            # Filtra apenas os registros dentro do período especificado
+                        if enable_date_filter and start_date and end_date:
+                            mask = (df['data_liquidacao'] >= pd.Timestamp(start_date)) & \
+                                (df['data_liquidacao'] <= pd.Timestamp(end_date))
+                            df = df[mask]
+
+                        
                         colunas_necessarias = [col for col in colunas_base if col in df.columns]
                         df = df[colunas_necessarias]
                         
                         all_ap005_dfs.append(df)
                         
-                        # Clear memory
+                        # Limpando memória
                         del df
                         
                     except Exception as e:
@@ -546,64 +585,72 @@ def menu_relatorio_marketup():
                         continue
 
             status_text.text("Combinando dados...")
-            # Combine dataframes efficiently
-            combined_ap005 = pd.concat(all_ap005_dfs, ignore_index=True)
-            combined_ap005 = combined_ap005.drop_duplicates()
+            # Combinando DataFrames
+            if all_ap005_dfs:
+                combined_ap005 = pd.concat(all_ap005_dfs, ignore_index=True)
+                combined_ap005 = combined_ap005.drop_duplicates()
 
-            # Clear memory
-            del all_ap005_dfs
+                # Limpando memória
+                del all_ap005_dfs
 
-            status_text.text("Processando resultados...")
-            resultado_final = process_payment_data(combined_ap005, df_cnpj)
+                status_text.text("Processando resultados...")
+                resultado_final = process_payment_data(combined_ap005, df_cnpj)
 
-            # Display results
-            st.success("Processamento concluído com sucesso!")
-            
-            st.markdown('<div class="subtitle">Resumo de Pagamentos</div>', 
-                       unsafe_allow_html=True)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                total_cnpjs = len(resultado_final['CNPJ'].unique())
-                cnpjs_pagos = len(resultado_final[
-                    (resultado_final['STATUS_PAGAMENTO'].isin(['PAGO', 'PAGO PARCIALMENTE']))
-                ]['CNPJ'].unique())
+                # Mostrando resultados
+                st.success("Processamento concluído com sucesso!")
                 
-                st.metric("Total de CNPJs", f"{total_cnpjs:,}")
-                st.metric("CNPJs Pagos", f"{cnpjs_pagos:,}")
-            
-            with col2:
-                total_mensalidade = resultado_final['VALOR_MENSALIDADE'].apply(
-                    lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
-                ).sum()
+                # Adiciona informação sobre o período filtrado
+                if enable_date_filter and start_date and end_date:
+                    st.info(f"Dados filtrados para o período de {start_date.strftime('%d/%m/%Y')} "
+                           f"até {end_date.strftime('%d/%m/%Y')}")
                 
-                total_cobrado = resultado_final['VALOR_COBRADO'].apply(
-                    lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
-                ).sum()
+                st.markdown('<div class="subtitle">Resumo de Pagamentos</div>', 
+                           unsafe_allow_html=True)
                 
-                st.metric("Valor Total Mensalidade", 
-                         f"R$ {locale.format_string('%.2f', total_mensalidade, grouping=True)}")
-                st.metric("Valor Total Cobrado", 
-                         f"R$ {locale.format_string('%.2f', total_cobrado, grouping=True)}")
+                col1, col2 = st.columns(2)
+                with col1:
+                    total_cnpjs = len(resultado_final['CNPJ'].unique())
+                    cnpjs_pagos = len(resultado_final[
+                        (resultado_final['STATUS_PAGAMENTO'].isin(['PAGO', 'PAGO PARCIALMENTE']))
+                    ]['CNPJ'].unique())
+                    
+                    st.metric("Total de CNPJs", f"{total_cnpjs:,}")
+                    st.metric("CNPJs Pagos", f"{cnpjs_pagos:,}")
+                
+                with col2:
+                    total_mensalidade = resultado_final['VALOR_MENSALIDADE'].apply(
+                        lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
+                    ).sum()
+                    
+                    total_cobrado = resultado_final['VALOR_COBRADO'].apply(
+                        lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
+                    ).sum()
+                    
+                    st.metric("Valor Total Mensalidade", 
+                             f"R$ {locale.format_string('%.2f', total_mensalidade, grouping=True)}")
+                    st.metric("Valor Total Cobrado", 
+                             f"R$ {locale.format_string('%.2f', total_cobrado, grouping=True)}")
 
-            # Download do resultado
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_path = f'relatorio_marketup_{timestamp}.xlsx'
-            save_to_excel(resultado_final, output_path)
-            
-            with open(output_path, 'rb') as f:
-                excel_data = f.read()
-            
-            st.download_button(
-                label="Download Relatório Completo",
-                data=excel_data,
-                file_name=output_path,
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
+                # Download do resultado
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_path = f'relatorio_marketup_{timestamp}.xlsx'
+                save_to_excel(resultado_final, output_path)
+                
+                with open(output_path, 'rb') as f:
+                    excel_data = f.read()
+                
+                st.download_button(
+                    label="Download Relatório Completo",
+                    data=excel_data,
+                    file_name=output_path,
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
 
-            # Remover arquivo temporário
-            import os
-            os.remove(output_path)
+                # Remover arquivo temporário
+                import os
+                os.remove(output_path)
+            else:
+                st.error("Nenhum dado foi encontrado após o processamento dos arquivos.")
 
         except Exception as e:
             st.error(f"Erro durante o processamento: {str(e)}")

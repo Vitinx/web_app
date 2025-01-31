@@ -10,8 +10,6 @@ def standardize_cnpj_columns(df_cnpj):
     """
     Padronizando os nomes das colunas do CNPJ DataFrame verificando diversas variações comuns.
     """
-    # Imprimir colunas disponíveis para debug
-    print("Colunas disponíveis no DataFrame antes da padronização:", df_cnpj.columns.tolist())
     
     column_mappings = {
         'RAZAO_SOCIAL': [
@@ -64,9 +62,7 @@ def standardize_cnpj_columns(df_cnpj):
             else:
                 df_cnpj[col] = 'NÃO INFORMADO'
     
-    print("Colunas disponíveis após padronização:", df_cnpj.columns.tolist())
-    
-    # Primeiro, vamos agrupar apenas por CNPJ
+    # Agrupa apenas por CNPJ
     grouped_df = df_cnpj.groupby('CNPJ', as_index=False).agg({
         'VALOR': 'sum',
         'ID': 'first',
@@ -114,7 +110,14 @@ def process_payment_data(df_ap005, df_cnpj):
             df_ap005.drop('informacoes_pagamento', axis=1),
             df_separado
         ], axis=1)
-        
+
+        # Verifica se a coluna existe antes de tentar acessá-la
+        if 'valor_constituido_contrato_unidade_recebivel' in df_ap005.columns:
+            df_ap005['valor_constituido_contrato_unidade_recebivel'] = df_ap005['valor_constituido_contrato_unidade_recebivel'].replace('', '0').fillna('0')
+        else:
+            # Se a coluna não existir, cria uma com valores padrão (0)
+            df_ap005['valor_constituido_contrato_unidade_recebivel'] = 0
+
         # Conversões e limpeza de dados
         df_ap005['valor_constituido_contrato_unidade_recebivel'] = pd.to_numeric(
             df_ap005['valor_constituido_contrato_unidade_recebivel'].replace('', '0').fillna('0'),
@@ -155,7 +158,7 @@ def process_payment_data(df_ap005, df_cnpj):
             
             return 'PAGO' if percentual_pago >= 50 else 'NÃO PAGO'
         
-        # Criar DataFrame final com valores agrupados
+        # Cria DataFrame final com valores agrupados
         final_result = pd.DataFrame({
             'ID': result['ID'],
             'CNPJ': result['CNPJ'],
