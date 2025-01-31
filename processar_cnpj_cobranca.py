@@ -14,7 +14,14 @@ import platform
 def processar_cnpj_cobranca(path_cobranca, df_ap007b_ret):
     
     # Ler arquivo Excel
-    df_mktup = pd.read_excel(f'{path_cobranca}')
+    #df_mktup = pd.read_excel(f'{path_cobranca}')
+    
+    # Lista para armazenar os DataFrames
+    df_mktup = []
+    
+    if path_cobranca:
+        # Ler o arquivo Excel em um DataFrame
+        df_mktup = pd.read_excel(path_cobranca)
     
     # Ajustar colunas ID e CNPJ
     df_mktup['ID'] = df_mktup['ID'].astype(str).str.replace(r'\.0$', '', regex=True)

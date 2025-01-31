@@ -290,19 +290,29 @@ def criacao_contratos():
             st.session_state.df_cnpj = None
 
         # Input para o caminho da pasta AP007B
-        st.markdown('<div class="subtitle">Insira o caminho da pasta com os arquivos AP007B</div>', unsafe_allow_html=True)
-        path_ap007b = st.text_input("Digite o caminho da pasta (AP007B):")
+        # st.markdown('<div class="subtitle">Insira o caminho da pasta com os arquivos AP007B</div>', unsafe_allow_html=True)
+        # path_ap007b = st.text_input("Digite o caminho da pasta (AP007B):")
+        
+        path_ap007b = st.file_uploader("Faça o upload dos arquivos AP007B", accept_multiple_files=True, type="csv")
 
         # Input para o caminho do arquivo de cobrança
-        st.markdown('<div class="subtitle">Insira o caminho do arquivo de cobrança</div>', unsafe_allow_html=True)
-        path_cobranca = st.text_input("Digite o caminho do arquivo (Cobrança):")
+        # st.markdown('<div class="subtitle">Insira o caminho do arquivo de cobrança</div>', unsafe_allow_html=True)
+        # path_cobranca = st.text_input("Digite o caminho do arquivo (Cobrança):")
+        
+        path_cobranca = st.file_uploader("Faça o upload do arquivo de CNPJ da Marketup", accept_multiple_files=False, type="xlsx")
 
         # Input para datas de início e fim da assinatura
-        st.markdown('<div class="subtitle">Insira a data de início da assinatura (YYYY-MM-DD):</div>', unsafe_allow_html=True)
-        data_inicio_assinatura = st.text_input("Data de início da assinatura:")
+        #st.markdown('<div class="subtitle">Insira a data de início da assinatura (YYYY-MM-DD):</div>', unsafe_allow_html=True)
+        #data_inicio_assinatura = st.text_input("Data de início da assinatura:")
+        data_inicio_assinatura = st.date_input("Data de início da assinatura", 
+                                               value=None,
+                                               format="YYYY-MM-DD")
 
-        st.markdown('<div class="subtitle">Insira a data de fim da assinatura (YYYY-MM-DD):</div>', unsafe_allow_html=True)
-        data_fim_assinatura = st.text_input("Data de fim da assinatura:")
+        #st.markdown('<div class="subtitle">Insira a data de fim da assinatura (YYYY-MM-DD):</div>', unsafe_allow_html=True)
+        #data_fim_assinatura = st.text_input("Data de fim da assinatura:")
+        data_fim_assinatura = st.date_input("Data final da assinatura", 
+                                               value=None,
+                                               format="YYYY-MM-DD")
 
         # Input para o número do arquivo
         st.markdown('<div class="subtitle">Insira o número deste arquivo</div>', unsafe_allow_html=True)

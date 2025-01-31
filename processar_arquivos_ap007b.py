@@ -21,12 +21,26 @@ def processar_arquivos_ap007b(path_ap007b):
     
     
     # Lendo todos os arquivos CSV do diretório
-    arquivos_csv = glob.glob(os.path.join(path_ap007b, "*.csv"))
+    #arquivos_csv = glob.glob(os.path.join(path_ap007b, "*.csv"))
     
-    quantidade_arquivos = len(arquivos_csv)
+    #quantidade_arquivos = len(arquivos_csv)
     
     # Concatenando os arquivos em um único dataframe
-    df_ap007b = pd.concat([pd.read_csv(arquivo, header=None, delimiter=';', names=colunas) for arquivo in arquivos_csv], ignore_index=True)
+    #df_ap007b = pd.concat([pd.read_csv(arquivo, header=None, delimiter=';', names=colunas) for arquivo in arquivos_csv], ignore_index=True)
+    
+    # Lista para armazenar os DataFrames
+    dataframes = []
+
+# Verificar se há arquivos carregados
+    if path_ap007b:
+        for file in path_ap007b:
+            # Ler cada arquivo CSV em um DataFrame
+            df = pd.read_csv(file, header=None, delimiter=';', names=colunas)
+            dataframes.append(df)
+        
+    # Concatenar todos os DataFrames em um único DataFrame
+    df_ap007b = pd.concat(dataframes, ignore_index=True)
+    
     
     # Realizando tratamentos nos dados
     for col in ['entidade_registradora', 'instituicao_credenciadora', 'usuario_final_recebedor', 'titular_da_unidade_recebivel', 

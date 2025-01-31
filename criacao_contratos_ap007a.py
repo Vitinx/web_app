@@ -98,4 +98,4 @@ def gerar_arquivo_ap007a_criacao(df_cnpj, prefixo_mes, data_nome_arquivo, data_i
     nome_arquivo = f'CERC-AP007A_52541797_{data_nome_arquivo}_000000{numero_arquivo}.csv'
 
     # Salvando o arquivo CSV comprimido
-    df_ap007a.to_csv(f'arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)
+    df_ap007a.to_csv(f'data/arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)
