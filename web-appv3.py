@@ -25,7 +25,11 @@ from processar_um_arquivo_ap007a import *
 # Configurar o locale para formato brasileiro
 #locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 #locale.setlocale(locale.LC_ALL, 'pt_BR')
-locale.setlocale(locale.LC_ALL, os.getenv("LC_ALL", "C.UTF-8"))
+#locale.setlocale(locale.LC_ALL, os.getenv("LC_ALL", "C.UTF-8"))
+try:
+    locale.setlocale(locale.LC_MONETARY, 'pt_BR.UTF-8')
+except locale.Error:
+    locale.setlocale(locale.LC_MONETARY, 'C.UTF-8')  # Fallback para evitar erro
 # from functions import *
 #from backend import corrigir_valor, consolidar_arquivos_ap007b, processar_arquivos_ap007a, processar_dados_cobranca, gerar_arquivo_ap007a_criacao, gerar_arquivo_ap007a_atualizacao, gerar_arquivo_ap007a_inativacao, gerar_arquivo_ap007b_criacao, gerar_arquivo_ap007b_atualizacao, gerar_arquivo_ap007b_inativacao, processar_casos_de_inativacao, carregar_dados_cobranca_relatorio_final_marketup, gerar_relatorio_final_marketup
 
