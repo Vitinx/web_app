@@ -6,24 +6,13 @@ import locale
 # Definir localidade para formatação de moeda
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
-
-def calculate_paid_amount(group):
-    """
-    Calcula o valor total pago por CNPJ somando todos os valores constituídos
-    """
-    # Filtra apenas as linhas com data de liquidação
-    paid_rows = group[group['data_liquidacao'].notna()]
-    if paid_rows.empty:
-        return 0
-    
-    # Soma todos os valores constituídos para o CNPJ
-    total_value = paid_rows['valor_constituido_contrato_unidade_recebivel'].sum()
-    return total_value
-
 def standardize_cnpj_columns(df_cnpj):
     """
     Padronizando os nomes das colunas do CNPJ DataFrame verificando diversas variações comuns.
     """
+    # Imprimir colunas disponíveis para debug
+    print("Colunas disponíveis no DataFrame antes da padronização:", df_cnpj.columns.tolist())
+    
     column_mappings = {
         'RAZAO_SOCIAL': [
             'RAZAO_SOCIAL', 'RAZAO SOCIAL', 'razao_social', 'razao social',
@@ -39,33 +28,25 @@ def standardize_cnpj_columns(df_cnpj):
             'CNPJ', 'cnpj', 'Cnpj', 'CPF_CNPJ', 'cpf_cnpj', 'CPF/CNPJ',
             'DOCUMENTO', 'documento'
         ],
-        'CAMPANHA': [
-            'CAMPANHA', 'campanha', 'Campanha'
-        ],
         'ID': [
             'ID', 'id', 'Id'
         ]
     }
     
-    # Imprimir as colunas disponíveis para debug
-    print("Colunas disponíveis no DataFrame:", df_cnpj.columns.tolist())
-    
-    # Criando um mapeamento de nomes de colunas reais para nomes padronizados
+    # Criar mapeamento de colunas
     new_columns = {}
     for standard_name, variations in column_mappings.items():
-        found = False
         for variant in variations:
             if variant in df_cnpj.columns:
                 new_columns[variant] = standard_name
-                found = True
                 break
-                
+    
     # Renomear colunas encontradas
     if new_columns:
         df_cnpj = df_cnpj.rename(columns=new_columns)
     
     # Verificar quais colunas obrigatórias estão faltando
-    required_cols = {'RAZAO_SOCIAL', 'NOME_FANTASIA', 'CNPJ', 'CAMPANHA'}
+    required_cols = {'RAZAO_SOCIAL', 'NOME_FANTASIA', 'CNPJ'}
     missing_cols = required_cols - set(df_cnpj.columns)
     
     # Adicionar colunas faltantes com valores padrão
@@ -73,102 +54,35 @@ def standardize_cnpj_columns(df_cnpj):
         if col == 'CNPJ':
             raise ValueError(f"Coluna CNPJ é obrigatória e não foi encontrada no arquivo.")
         elif col == 'RAZAO_SOCIAL':
-            # Se não tiver RAZAO_SOCIAL, usa NOME_FANTASIA se disponível, senão usa "NÃO INFORMADO"
             if 'NOME_FANTASIA' in df_cnpj.columns:
                 df_cnpj[col] = df_cnpj['NOME_FANTASIA']
             else:
                 df_cnpj[col] = 'NÃO INFORMADO'
         elif col == 'NOME_FANTASIA':
-            # Se não tiver NOME_FANTASIA, usa RAZAO_SOCIAL se disponível, senão usa "NÃO INFORMADO"
             if 'RAZAO_SOCIAL' in df_cnpj.columns:
                 df_cnpj[col] = df_cnpj['RAZAO_SOCIAL']
             else:
                 df_cnpj[col] = 'NÃO INFORMADO'
-        elif col == 'CAMPANHA':
-            df_cnpj[col] = 'Anúncio'
     
-    return df_cnpj
-
-def calculate_proportional_payment(group):
-    """
-    Calcula a distribuição proporcional do valor pago entre os diferentes planos de um CNPJ,
-    mantendo a proporcionalidade baseada no valor da mensalidade e agrupando planos de mesmo valor
-    """
-    # Soma o valor total das mensalidades do CNPJ
-    total_mensalidade = group['VALOR'].sum()
-    if total_mensalidade == 0:
-        return pd.DataFrame({
-            'VALOR_COBRADO': [0] * len(group),
-            'STATUS_PAGAMENTO': ['NÃO PAGO'] * len(group)
-        })
+    print("Colunas disponíveis após padronização:", df_cnpj.columns.tolist())
     
-    # Valor total pago pelo CNPJ
-    total_pago = group['valor_constituido_contrato_unidade_recebivel'].iloc[0]
-    if total_pago == 0:
-        return pd.DataFrame({
-            'VALOR_COBRADO': [0] * len(group),
-            'STATUS_PAGAMENTO': ['NÃO PAGO'] * len(group)
-        })
-    
-    # Agrupa planos pelo mesmo valor de mensalidade
-    planos_agrupados = group.groupby('VALOR')
-    
-    # Dicionário para armazenar os valores distribuídos
-    valores_distribuidos = {}
-    
-    # Para cada grupo de planos com mesmo valor
-    for valor_mensalidade, planos in planos_agrupados:
-        # Quantidade de planos com este valor
-        qt_planos = len(planos)
-        
-        # Calcula a proporção deste grupo em relação ao total
-        proporcao_grupo = (valor_mensalidade * qt_planos) / total_mensalidade
-        
-        # Valor total para este grupo de planos
-        valor_grupo = (total_pago * proporcao_grupo).round(2)
-        
-        # Distribui igualmente entre os planos do mesmo valor
-        valor_por_plano = (valor_grupo / qt_planos).round(2)
-        
-        # Armazena o valor para cada plano deste grupo
-        for idx in planos.index:
-            valores_distribuidos[idx] = valor_por_plano
-    
-    # Converte para lista mantendo a ordem original
-    valor_cobrado = [valores_distribuidos[idx] for idx in group.index]
-    
-    # Ajusta diferença por arredondamento no primeiro valor
-    diferenca = total_pago - sum(valor_cobrado)
-    if abs(diferenca) > 0.01:  # Se a diferença for maior que 1 centavo
-        valor_cobrado[0] += diferenca
-    
-    # Calcula o percentual pago para cada plano
-    percentual_pago = [
-        (valor / mensalidade * 100) 
-        for valor, mensalidade in zip(valor_cobrado, group['VALOR'])
-    ]
-    
-    # Define o status com base no percentual pago
-    status = ['PAGO' if perc >= 50 else 'NÃO PAGO' for perc in percentual_pago]
-    
-    return pd.DataFrame({
-        'VALOR_COBRADO': valor_cobrado,
-        'STATUS_PAGAMENTO': status
+    # Primeiro, vamos agrupar apenas por CNPJ
+    grouped_df = df_cnpj.groupby('CNPJ', as_index=False).agg({
+        'VALOR': 'sum',
+        'ID': 'first',
+        'RAZAO_SOCIAL': 'first',
+        'NOME_FANTASIA': 'first'
     })
-
+    
+    return grouped_df
 
 def process_payment_data(df_ap005, df_cnpj):
     """
     Processa dados de pagamento com correção no processamento dos valores
     """
     try:
-        # Imprimir as colunas disponíveis para debug
-        print("Colunas no DataFrame CNPJ antes da padronização:", df_cnpj.columns.tolist())
-        
-        # Padroniza as colunas do DataFrame CNPJ
+        # Padroniza as colunas do DataFrame CNPJ e agrupa valores
         df_cnpj = standardize_cnpj_columns(df_cnpj)
-        
-        print("Colunas no DataFrame CNPJ após a padronização:", df_cnpj.columns.tolist())
         
         # Converte os valores do CNPJ para numérico
         if 'VALOR' in df_cnpj.columns:
@@ -176,10 +90,8 @@ def process_payment_data(df_ap005, df_cnpj):
         else:
             raise ValueError("Coluna 'VALOR' não encontrada no DataFrame CNPJ")
         
-        # Converte usuario_final_recebedor para string
+        # Processamento do AP005
         df_ap005['usuario_final_recebedor'] = df_ap005['usuario_final_recebedor'].astype(str).str.replace('[^0-9]', '', regex=True)
-        
-        # Remove pontos e traços do CNPJ
         df_cnpj['CNPJ'] = df_cnpj['CNPJ'].astype(str).str.replace('[^0-9]', '', regex=True)
         
         # Processamento da coluna informacoes_pagamento
@@ -188,7 +100,6 @@ def process_payment_data(df_ap005, df_cnpj):
         # Separa as informações de pagamento
         df_separado = df_ap005['informacoes_pagamento'].str.split(';', expand=True)
         
-        # Define as novas colunas
         novas_colunas = [
             "numero_documento_titular", "tipo_conta", "compe", "ispb", 
             "agencia", "numero_conta", "valor_a_pagar", "beneficiario", 
@@ -197,43 +108,33 @@ def process_payment_data(df_ap005, df_cnpj):
             "indicador_ordem_efeito", "valor_constituido_contrato_unidade_recebivel"
         ]
         
-        # Atribui nomes às colunas
         df_separado.columns = novas_colunas[:df_separado.shape[1]]
         
-        # Concatena com o DataFrame original
         df_ap005 = pd.concat([
             df_ap005.drop('informacoes_pagamento', axis=1),
             df_separado
         ], axis=1)
         
-        # Converte valor_constituido_contrato_unidade_recebivel para numérico
+        # Conversões e limpeza de dados
         df_ap005['valor_constituido_contrato_unidade_recebivel'] = pd.to_numeric(
             df_ap005['valor_constituido_contrato_unidade_recebivel'].replace('', '0').fillna('0'),
             errors='coerce'
         )
         
-        # Converte data_liquidacao_efetiva para datetime
         df_ap005['data_liquidacao'] = pd.to_datetime(
             df_ap005['data_liquidacao_efetiva'],
             errors='coerce'
         )
-
-        # Remove registros duplicados considerando todas as colunas
-        df_ap005 = df_ap005.drop_duplicates()
         
-        # Converte o número do documento do titular para string
-        df_ap005['numero_documento_titular'] =  df_ap005['numero_documento_titular'].astype(str)
-        
-        # Filtra apenas o documento do titular: '13998916000124'
         df_ap005 = df_ap005[df_ap005['numero_documento_titular'] == '13998916000124']
         
-        # Agrupa por usuário final recebedor, mas só considera valores onde há data de liquidação
+        # Agrupa por usuário final recebedor
         df_grouped = df_ap005.groupby('usuario_final_recebedor').agg({
             'valor_constituido_contrato_unidade_recebivel': 'sum',
-            'data_liquidacao': 'max'
+            'data_liquidacao': 'max'  # Pega a data mais recente
         }).reset_index()
         
-       # Merge com dados de CNPJ
+        # Merge com dados de CNPJ
         result = pd.merge(
             df_cnpj,
             df_grouped,
@@ -242,22 +143,22 @@ def process_payment_data(df_ap005, df_cnpj):
             how='left'
         )
         
-        # Agrupa por CNPJ e aplica a distribuição proporcional
-        payment_distribution = result.groupby('CNPJ').apply(calculate_proportional_payment).reset_index()
+        # Nova lógica para determinar status de pagamento
+        def determine_status(row):
+            if pd.isna(row['data_liquidacao']) or float(row['valor_constituido_contrato_unidade_recebivel']) == 0:
+                return 'NÃO PAGO'
+            
+            valor_mensalidade = float(row['VALOR'])
+            valor_pago = float(row['valor_constituido_contrato_unidade_recebivel'])
+            
+            percentual_pago = (valor_pago / valor_mensalidade * 100) if valor_mensalidade > 0 else 0
+            
+            return 'PAGO' if percentual_pago >= 50 else 'NÃO PAGO'
         
-        # Merge do resultado da distribuição com o resultado original
-        result = result.merge(
-            payment_distribution,
-            left_on='CNPJ',
-            right_on='CNPJ',
-            how='left'
-        )
-        
-        # Criar DataFrame final
+        # Criar DataFrame final com valores agrupados
         final_result = pd.DataFrame({
             'ID': result['ID'],
             'CNPJ': result['CNPJ'],
-            'CAMPANHA': result['CAMPANHA'],
             'RAZAO_SOCIAL': result['RAZAO_SOCIAL'],
             'NOME_FANTASIA': result.apply(
                 lambda x: x['RAZAO_SOCIAL'] if pd.isna(x['NOME_FANTASIA']) or x['NOME_FANTASIA'].strip() == '' 
@@ -269,14 +170,17 @@ def process_payment_data(df_ap005, df_cnpj):
                 lambda x: x['data_liquidacao'] if pd.notnull(x['data_liquidacao']) and float(x['valor_constituido_contrato_unidade_recebivel']) > 0 else None,
                 axis=1
             ),
-            'VALOR_COBRADO': result['VALOR_COBRADO'],
-            'STATUS_PAGAMENTO': result['STATUS_PAGAMENTO']
+            'VALOR_COBRADO': result.apply(
+                lambda x: x['valor_constituido_contrato_unidade_recebivel'] if pd.notnull(x['data_liquidacao']) else 0,
+                axis=1
+            ),
+            'STATUS_PAGAMENTO': result.apply(determine_status, axis=1)
         })
         
         # Formata valores monetários
         for col in ['VALOR_MENSALIDADE', 'VALOR_COBRADO']:
             final_result[col] = final_result[col].apply(
-                lambda x: locale.currency(float(x), grouping=True, symbol=None) if pd.notnull(x) else '0,00'
+                lambda x: locale.currency(x, grouping=True, symbol=None) if pd.notnull(x) else '0,00'
             )
         
         # Formata data
@@ -285,7 +189,7 @@ def process_payment_data(df_ap005, df_cnpj):
         )
         
         return final_result
-        
+    
     except Exception as e:
         print(f"Erro detalhado: {str(e)}")
         print("Colunas disponíveis no df_ap005:", df_ap005.columns)
