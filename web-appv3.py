@@ -82,7 +82,7 @@ if "page" not in st.session_state:
 
 # Funções para cada página
 def home():
-    st.markdown('<div class="title">Bem-vindo(a) ao criador de relatórios</div>', unsafe_allow_html=True)
+    st.markdown('<div class="title">Bem-vindo(a) ao criador de relatórios VEON</div>', unsafe_allow_html=True)
     st.markdown('<div class="centered">', unsafe_allow_html=True)
     if st.button("Relatório de Contratos CERC"):
         st.session_state.page = "menu_tipo_relatorio"
@@ -263,7 +263,7 @@ def atualizacao_agenda():
     fluxo_processamento_atualizacao_agenda()
     
     if st.button("Voltar"):
-        st.session_state.page = "menu_relatorio_cerc"        
+        st.session_state.page = "menu_tipo_relatorio"        
         
 ###################### CRIAÇÃO DOS CONTRATOS ###################################        
 def criacao_contratos():
@@ -326,7 +326,7 @@ def criacao_contratos():
     fluxo_processamento_criacao()
     
     if st.button("Voltar"):
-        st.session_state.page = "menu_relatorio_cerc"
+        st.session_state.page = "menu_tipo_relatorio"
         
 def atualizacao_contratos():
     st.markdown('<div class="title">Atualização de contratos CERC</div>', unsafe_allow_html=True)
@@ -418,7 +418,7 @@ def atualizacao_contratos():
     fluxo_processamento_atualizacao()
     
     if st.button("Voltar"):
-        st.session_state.page = "menu_relatorio_cerc"
+        st.session_state.page = "menu_tipo_relatorio"
         
 def inativacao_contratos():
     st.markdown('<div class="title">Inativação de contratos CERC</div>', unsafe_allow_html=True)
@@ -462,7 +462,7 @@ def inativacao_contratos():
     fluxo_processamento()
     
     if st.button("Voltar"):
-        st.session_state.page = "menu_relatorio_cerc"
+        st.session_state.page = "menu_tipo_relatorio"
 
 def menu_relatorio_marketup():
     st.markdown('<div class="title">Relatório MarketUP</div>', unsafe_allow_html=True)
