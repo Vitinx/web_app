@@ -4,7 +4,11 @@ from datetime import datetime
 import locale
 
 # Definir localidade para formatação de moeda
-locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+#locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+try:
+    locale.setlocale(locale.LC_MONETARY, 'pt_BR.UTF-8')
+except locale.Error:
+    locale.setlocale(locale.LC_MONETARY, 'C.UTF-8')  # Fallback para evitar erro
 
 def standardize_cnpj_columns(df_cnpj):
     """
