@@ -5,6 +5,7 @@ import pandas as pd
 import datetime
 from datetime import datetime
 import locale
+import zipfile
 from atualizacao_contratos_ap007a import *
 from atualizacao_contratos_ap007b import *
 from atualizacao_optin_agenda_ap004 import *
@@ -328,22 +329,40 @@ def criacao_contratos():
                 
                 # Exibe mensagens de sucesso e/ou dados processados
                 st.write("Processamento completo!")
-                st.write("Arquivos AP007B e cobrança processados com sucesso!")
                 
                 # Gerando arquivo AP007A
-                gerar_arquivo_ap007a_criacao(df_cnpj, prefixo_mes=prefixo_mes, data_nome_arquivo=datetime.now().strftime('%Y%m%d'), data_inicio_assinatura=data_inicio_assinatura, data_fim_assinatura=data_fim_assinatura, numero_arquivo=numero_arquivo)
+                buffer_a, nome_arquivo_a = gerar_arquivo_ap007a_criacao(df_cnpj, prefixo_mes=prefixo_mes, data_nome_arquivo=datetime.now().strftime('%Y%m%d'), data_inicio_assinatura=data_inicio_assinatura, data_fim_assinatura=data_fim_assinatura, numero_arquivo=numero_arquivo)
+                
+                st.session_state['buffer_a'] = buffer_a
+                st.session_state['nome_arquivo_a'] = nome_arquivo_a
                                 
-                # Mensagens ao usuário
-                st.markdown('<div class="subtitle">Arquivo AP007A gerado com sucesso!</div>', unsafe_allow_html=True)
                     
                 # Gerando arquivo AP007B
-                gerar_arquivo_ap007b_criacao(df_cnpj, prefixo_mes=prefixo_mes, data_nome_arquivo=datetime.now().strftime('%Y%m%d'), data_inicio_assinatura=data_inicio_assinatura, data_fim_assinatura=data_fim_assinatura, numero_arquivo=numero_arquivo)
+                buffer_b, nome_arquivo_b = gerar_arquivo_ap007b_criacao(df_cnpj, prefixo_mes=prefixo_mes, data_nome_arquivo=datetime.now().strftime('%Y%m%d'), data_inicio_assinatura=data_inicio_assinatura, data_fim_assinatura=data_fim_assinatura, numero_arquivo=numero_arquivo)
+                
+                st.session_state['buffer_b'] = buffer_b
+                st.session_state['nome_arquivo_b'] = nome_arquivo_b
                                 
-                # Mensagens ao usuário
-                st.markdown('<div class="subtitle">Arquivo AP007B gerado com sucesso!</div>', unsafe_allow_html=True)
 
             else:
                 st.warning("Por favor, preencha todos os campos antes de processar.")
+                
+            # Verificar se os arquivos foram processados e se o botão "Processar Tudo" foi clicado
+            if 'buffer_a' in st.session_state and 'buffer_b' in st.session_state:
+                # Criar um arquivo ZIP com os dois arquivos CSV
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w") as zf:
+                    zf.writestr(f"{st.session_state['nome_arquivo_a']}.gz", st.session_state['buffer_a'].getvalue())
+                    zf.writestr(f"{st.session_state['nome_arquivo_b']}.gz", st.session_state['buffer_b'].getvalue())
+                zip_buffer.seek(0)
+
+                # Adicionar botão de download para o arquivo ZIP
+                st.download_button(
+                    label="Baixar arquivos AP007A e AP007B",
+                    data=zip_buffer,
+                    file_name="arquivos_AP007.zip",
+                    mime="application/zip"
+                )
 
     fluxo_processamento_criacao()
     

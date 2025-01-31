@@ -10,6 +10,7 @@ import calendar
 import time
 import os
 import platform
+import io
 
 def corrigir_valor(valor):
     # Converter para string para tratar os valores
@@ -98,4 +99,15 @@ def gerar_arquivo_ap007a_criacao(df_cnpj, prefixo_mes, data_nome_arquivo, data_i
     nome_arquivo = f'CERC-AP007A_52541797_{data_nome_arquivo}_000000{numero_arquivo}.csv'
 
     # Salvando o arquivo CSV comprimido
-    df_ap007a.to_csv(f'data/arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)
+    #df_ap007a.to_csv(f'data/arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)
+    
+    # Salvando o arquivo CSV comprimido em um buffer
+    buffer = io.BytesIO()
+    df_ap007a.to_csv(buffer, header=None, sep=';', index=False, compression='gzip')
+    buffer.seek(0)
+    
+    return buffer, nome_arquivo
+    
+    #def save_to_excel(df_ap007a):
+    #    df_ap007a.to_csv(f'data/arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)
+   
