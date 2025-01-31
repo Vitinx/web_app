@@ -9,6 +9,12 @@ try:
     locale.setlocale(locale.LC_MONETARY, 'pt_BR.UTF-8')
 except locale.Error:
     locale.setlocale(locale.LC_MONETARY, 'C.UTF-8')  # Fallback para evitar erro
+ 
+# Formatação monetária sem 'locale'   
+def format_currency(value):
+    if pd.notnull(value):
+        return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return "0,00"    
 
 def standardize_cnpj_columns(df_cnpj):
     """
@@ -184,11 +190,14 @@ def process_payment_data(df_ap005, df_cnpj):
             'STATUS_PAGAMENTO': result.apply(determine_status, axis=1)
         })
         
-        # Formata valores monetários
+        # # Formata valores monetários
+        # for col in ['VALOR_MENSALIDADE', 'VALOR_COBRADO']:
+        #     final_result[col] = final_result[col].apply(
+        #         lambda x: locale.currency(x, grouping=True, symbol=None) if pd.notnull(x) else '0,00'
+        #     )
+        
         for col in ['VALOR_MENSALIDADE', 'VALOR_COBRADO']:
-            final_result[col] = final_result[col].apply(
-                lambda x: locale.currency(x, grouping=True, symbol=None) if pd.notnull(x) else '0,00'
-            )
+            final_result[col] = final_result[col].apply(format_currency)
         
         # Formata data
         final_result['DATA_LIQUIDACAO'] = final_result['DATA_LIQUIDACAO'].apply(
