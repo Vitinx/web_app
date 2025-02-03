@@ -504,10 +504,10 @@ def inativacao_contratos():
         path_inativacao = st.file_uploader("Faça o upload do arquivo com os CNPJs para inativação", accept_multiple_files=False, type="xlsx")
         
         # Caminho dos arquivos de retorno, nesta etapa processamos todos os arquivos
-        path_ap007b = st.file_uploader("Faça o upload do arquivos AP007A", accept_multiple_files=False)
+        path_ap007b = st.file_uploader("Faça o upload do arquivo AP007A", accept_multiple_files=False)
         
         # Caminho dos arquivos de retorno AP007A
-        path_ap007a = st.file_uploader("Faça o upload do arquivos AP007B", accept_multiple_files=False)
+        path_ap007a = st.file_uploader("Faça o upload do arquivo AP007B", accept_multiple_files=False)
         
         # Input para o número do arquivo
         st.markdown('<div class="subtitle">Insira o número deste arquivo</div>', unsafe_allow_html=True)
@@ -560,7 +560,7 @@ def menu_relatorio_marketup():
     uploaded_ap005_files = st.file_uploader("Selecione os arquivos AP005", 
                                           type=['csv', 'xlsx'], 
                                           accept_multiple_files=True)
-    uploaded_cnpj = st.file_uploader("Selecione o arquivo de CNPJs agrupados", 
+    uploaded_cnpj = st.file_uploader("Selecione o arquivo de CNPJs da Marketup", 
                                     type=['csv', 'xlsx'])
 
     # Adiciona checkbox para ativar filtros de data
