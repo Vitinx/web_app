@@ -109,8 +109,8 @@ def home():
 def menu_tipo_relatorio():
     st.markdown('<div class="title">Qual o tipo do relatório?</div>', unsafe_allow_html=True)
     st.markdown('<div class="centered">', unsafe_allow_html=True)
-    if st.button("CERC-AP004"):
-        st.session_state.page = "ap004"
+    #if st.button("CERC-AP004"):
+       # st.session_state.page = "ap004"
     if st.button("CERC-AP007A / CERC-AP007B"):
         st.session_state.page = "ap007a_ap007b"
     st.markdown('</div>', unsafe_allow_html=True)
