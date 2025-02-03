@@ -486,7 +486,7 @@ def atualizacao_contratos():
     fluxo_processamento_atualizacao()
     
     if st.button("Voltar"):
-        st.session_state.page = "menu_tipo_relatorio"
+        st.session_state.page = "home"
         
 def inativacao_contratos():
     st.markdown('<div class="title">Inativação de contratos CERC</div>', unsafe_allow_html=True)
@@ -549,7 +549,7 @@ def inativacao_contratos():
     fluxo_processamento_inativacao()
     
     if st.button("Voltar"):
-        st.session_state.page = "menu_tipo_relatorio"
+        st.session_state.page = "home"
 
 def menu_relatorio_marketup():
     st.markdown('<div class="title">Relatório MarketUP</div>', unsafe_allow_html=True)
