@@ -13,7 +13,7 @@ import platform
 
 def processar_arquivos_ap007a(path_ap007a, df_cnpj):
     # Lendo todos os arquivos CSV do diretório
-    arquivos_csv = glob.glob(os.path.join(path_ap007a, "*.csv"))
+    # arquivos_csv = glob.glob(os.path.join(path_ap007a, "*.csv"))
 
     # Definindo as colunas do DataFrame
     colunas = ['referencia_externa', 'protocolo', 'qtd_urs_alcancadas', 'valor_urs_alcancadas', 
@@ -21,8 +21,20 @@ def processar_arquivos_ap007a(path_ap007a, df_cnpj):
                'data_hora_recebimento_arquivo', 'status_operacao', 'erros', 'identificador_do_contrato', 'valor_constituido_da_ur']
 
     # Consolidando os arquivos CSV em um único DataFrame
-    df_ap007a_ret = pd.concat([pd.read_csv(arquivo, header=None, delimiter=';', names=colunas) for arquivo in arquivos_csv])
+    # df_ap007a_ret = pd.concat([pd.read_csv(arquivo, header=None, delimiter=';', names=colunas) for arquivo in arquivos_csv])
 
+    # Lista para armazenar os DataFrames
+    dataframes = []
+    
+    if path_ap007a:
+        for file in path_ap007a:
+            # Ler cada arquivo CSV em um DataFrame
+            df = pd.read_csv(file, header=None, delimiter=';', names=colunas)
+            dataframes.append(df)
+        
+    # Concatenar todos os DataFrames em um único DataFrame
+    df_ap007a_ret = pd.concat(dataframes, ignore_index=True)
+    
     # Filtrando as URs oneradas
     df_onerados = df_ap007a_ret.query('valor_urs_alcancadas > 0.0')
     df_onerados['ID'] = df_onerados['referencia_externa'].str.extract(r'(\d+)')

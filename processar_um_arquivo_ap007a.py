@@ -13,7 +13,7 @@ import platform
 
 def processar_um_arquivo_ap007a(path_ap007a, df_cnpj):
     # Lendo todos os arquivos CSV do diretório
-    arquivo = path_ap007a
+    #arquivo = path_ap007a
 
     # Definindo as colunas do DataFrame
     colunas = ['referencia_externa', 'protocolo', 'qtd_urs_alcancadas', 'valor_urs_alcancadas', 
@@ -21,7 +21,13 @@ def processar_um_arquivo_ap007a(path_ap007a, df_cnpj):
                'data_hora_recebimento_arquivo', 'status_operacao', 'erros', 'identificador_do_contrato', 'valor_constituido_da_ur']
 
     # Consolidando os arquivos CSV em um único DataFrame
-    df_ap007a_ret = pd.read_csv(arquivo, header=None, delimiter=';', names=colunas)
+    #df_ap007a_ret = pd.read_csv(arquivo, header=None, delimiter=';', names=colunas)
+    
+    # Lista para armazenar os DataFrames
+    
+    if path_ap007a:
+        # Ler o arquivo Excel em um DataFrame
+        df_ap007a_ret = pd.read_csv(path_ap007a, header=None, delimiter=';', names=colunas)
 
     # Filtrando as URs oneradas
     df_onerados = df_ap007a_ret.query('valor_urs_alcancadas > 0.0')

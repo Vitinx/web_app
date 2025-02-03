@@ -12,12 +12,12 @@ from atualizacao_optin_agenda_ap004 import *
 from criacao_contratos_ap007a import *
 from criacao_contratos_ap007b import *
 from criacao_optin_agenda_ap004 import *
+from inativacao_contratos_pagos import *
 from inativacao_contratos_ap007a import *
 from inativacao_contratos_ap007b import *
 from inativacao_optin_agenda_ap006 import *
 from processar_arquivos_ap007a import *
 from processar_arquivos_ap007b import *
-from processar_casos_especificos_inativacao import *
 from processar_cnpj_cobranca import *
 from processar_pagamentos import * 
 from processar_um_arquivo_ap007a import *
@@ -360,14 +360,14 @@ def criacao_contratos():
                 st.download_button(
                     label="Baixar arquivos AP007A e AP007B",
                     data=zip_buffer,
-                    file_name="arquivos_AP007.zip",
+                    file_name="arquivos.zip",
                     mime="application/zip"
                 )
 
     fluxo_processamento_criacao()
     
     if st.button("Voltar"):
-        st.session_state.page = "menu_tipo_relatorio"
+        st.session_state.page = "home"
         
 def atualizacao_contratos():
     st.markdown('<div class="title">Atualização de contratos CERC</div>', unsafe_allow_html=True)
@@ -386,15 +386,15 @@ def atualizacao_contratos():
                 st.session_state.df_cnpj = None
 
             # Caminho dos arquivos de retorno, nesta etapa processamos todos os arquivos
-            path_ap007b = 'C:/Users/Vítor/Documents/VEON/arquivos_retorno/arquivos_ap007b'
+            path_ap007b = st.file_uploader("Faça o upload dos arquivos AP007B", accept_multiple_files=True, type="csv")
 
             # Input para o caminho do arquivo de cobrança
-            st.markdown('<div class="subtitle">Insira o caminho do arquivo de cobrança</div>', unsafe_allow_html=True)
-            path_cobranca = st.text_input("Digite o caminho do arquivo (Cobrança):")
+            #st.markdown('<div class="subtitle">Insira o caminho do arquivo de cobrança</div>', unsafe_allow_html=True)
+            path_cobranca = st.file_uploader("Faça o upload do arquivo de CNPJ da Marketup", accept_multiple_files=False, type="xlsx")
             
             # Input para o caminho do arquivo AP007A
-            st.markdown('<div class="subtitle">Insira o caminho do arquivo AP007A</div>', unsafe_allow_html=True)
-            path_ap007a = st.text_input("Digite o caminho do arquivo (AP007A):")
+            #st.markdown('<div class="subtitle">Insira o caminho do arquivo AP007A</div>', unsafe_allow_html=True)
+            path_ap007a = st.file_uploader("Faça o upload do arquivo AP007A", accept_multiple_files=False, type="csv")
             
             # Botão para consultar os arquivos
             if st.button("Consultar"):
@@ -419,11 +419,15 @@ def atualizacao_contratos():
 
             if st.session_state.continuar:
                 # Input para datas de início e fim da assinatura
-                st.markdown('<div class="subtitle">Insira a data de início da assinatura (YYYY-MM-DD):</div>', unsafe_allow_html=True)
-                data_inicio_assinatura = st.text_input("Data de início da assinatura:")
+                #st.markdown('<div class="subtitle">Insira a data de início da assinatura (YYYY-MM-DD):</div>', unsafe_allow_html=True)
+                data_inicio_assinatura = st.date_input("Data de inicío da assinatura", 
+                                               value=None,
+                                               format="YYYY-MM-DD")
 
-                st.markdown('<div class="subtitle">Insira a data de fim da assinatura (YYYY-MM-DD):</div>', unsafe_allow_html=True)
-                data_fim_assinatura = st.text_input("Data de fim da assinatura:")
+                #st.markdown('<div class="subtitle">Insira a data de fim da assinatura (YYYY-MM-DD):</div>', unsafe_allow_html=True)
+                data_fim_assinatura = st.date_input("Data final da assinatura", 
+                                               value=None,
+                                               format="YYYY-MM-DD")
 
                 # Input para o número do arquivo
                 st.markdown('<div class="subtitle">Insira o número deste arquivo</div>', unsafe_allow_html=True)
@@ -439,22 +443,45 @@ def atualizacao_contratos():
                         
                         # Exibe mensagens de sucesso e/ou dados processados
                         st.write("Processamento completo!")
-                        st.write("Arquivos AP007B e cobrança processados com sucesso!")
+                        #st.write("Arquivos AP007B e cobrança processados com sucesso!")
                         
                         # Gerando arquivo AP007A
-                        gerar_arquivo_ap007a_atualizacao(df_cnpj, prefixo_mes=prefixo_mes, data_nome_arquivo=datetime.now().strftime('%Y%m%d'), data_inicio_assinatura=data_inicio_assinatura, data_fim_assinatura=data_fim_assinatura, numero_arquivo=numero_arquivo)
+                        buffer_a, nome_arquivo_a = gerar_arquivo_ap007a_atualizacao(df_cnpj, prefixo_mes=prefixo_mes, data_nome_arquivo=datetime.now().strftime('%Y%m%d'), data_inicio_assinatura=data_inicio_assinatura, data_fim_assinatura=data_fim_assinatura, numero_arquivo=numero_arquivo)
+                        
+                        st.session_state['buffer_a'] = buffer_a
+                        st.session_state['nome_arquivo_a'] = nome_arquivo_a
                                         
                         # Mensagens ao usuário
-                        st.markdown('<div class="subtitle">Arquivo AP007A gerado com sucesso!</div>', unsafe_allow_html=True)
+                        #st.markdown('<div class="subtitle">Arquivo AP007A gerado com sucesso!</div>', unsafe_allow_html=True)
                             
                         # Gerando arquivo AP007B
-                        gerar_arquivo_ap007b_atualizacao(df_cnpj, prefixo_mes=prefixo_mes, data_nome_arquivo=datetime.now().strftime('%Y%m%d'), data_inicio_assinatura=data_inicio_assinatura, data_fim_assinatura=data_fim_assinatura, numero_arquivo=numero_arquivo)
+                        buffer_b, nome_arquivo_b = gerar_arquivo_ap007b_atualizacao(df_cnpj, prefixo_mes=prefixo_mes, data_nome_arquivo=datetime.now().strftime('%Y%m%d'), data_inicio_assinatura=data_inicio_assinatura, data_fim_assinatura=data_fim_assinatura, numero_arquivo=numero_arquivo)
+                        
+                        st.session_state['buffer_b'] = buffer_b
+                        st.session_state['nome_arquivo_b'] = nome_arquivo_b
                                         
                         # Mensagens ao usuário
-                        st.markdown('<div class="subtitle">Arquivo AP007B gerado com sucesso!</div>', unsafe_allow_html=True)
+                        #st.markdown('<div class="subtitle">Arquivo AP007B gerado com sucesso!</div>', unsafe_allow_html=True)
 
                     else:
                         st.warning("Por favor, preencha todos os campos antes de processar.")
+                        
+                    # Verificar se os arquivos foram processados e se o botão "Processar Tudo" foi clicado
+                    if 'buffer_a' in st.session_state and 'buffer_b' in st.session_state:
+                        # Criar um arquivo ZIP com os dois arquivos CSV
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, "w") as zf:
+                            zf.writestr(f"{st.session_state['nome_arquivo_a']}.gz", st.session_state['buffer_a'].getvalue())
+                            zf.writestr(f"{st.session_state['nome_arquivo_b']}.gz", st.session_state['buffer_b'].getvalue())
+                        zip_buffer.seek(0)
+
+                        # Adicionar botão de download para o arquivo ZIP
+                        st.download_button(
+                            label="Baixar arquivos AP007A e AP007B",
+                            data=zip_buffer,
+                            file_name="arquivos.zip",
+                            mime="application/zip"
+                        )
 
     fluxo_processamento_atualizacao()
     
@@ -465,7 +492,7 @@ def inativacao_contratos():
     st.markdown('<div class="title">Inativação de contratos CERC</div>', unsafe_allow_html=True)
     st.markdown('<div class="centered">', unsafe_allow_html=True)
     
-    def fluxo_processamento():
+    def fluxo_processamento_inativacao():
             
         # Define variáveis na sessão para armazenar os inputs dos usuários
         if "df_ap007b_ret" not in st.session_state:
@@ -473,34 +500,53 @@ def inativacao_contratos():
         if "df_cnpj" not in st.session_state:
             st.session_state.df_cnpj = None
         
+        # Caminho do arquivo que possui os CNPJs pagos que devem ser inativados
+        path_inativacao = st.file_uploader("Faça o upload do arquivo com os CNPJs para inativação", accept_multiple_files=False, type="xlsx")
+        
         # Caminho dos arquivos de retorno, nesta etapa processamos todos os arquivos
-        path_ap007b = 'C:/Users/Vítor/Documents/VEON/arquivos_retorno/arquivos_ap007b'
+        path_ap007b = st.file_uploader("Faça o upload do arquivos AP007A", accept_multiple_files=False)
         
-        # Input para o caminho do arquivo de cobrança
-        st.markdown('<div class="subtitle">Insira o caminho do arquivo de cobrança</div>', unsafe_allow_html=True)
-        path_cobranca = st.text_input("Digite o caminho do arquivo (Cobrança):")
+        # Caminho dos arquivos de retorno AP007A
+        path_ap007a = st.file_uploader("Faça o upload do arquivos AP007B", accept_multiple_files=False)
         
-        # Input para o caminho do arquivo AP007A
-        st.markdown('<div class="subtitle">Insira o caminho do arquivo AP007A</div>', unsafe_allow_html=True)
-        path_ap007a = st.text_input("Digite o caminho do arquivo (AP007A):")
+        # Input para o número do arquivo
+        st.markdown('<div class="subtitle">Insira o número deste arquivo</div>', unsafe_allow_html=True)
+        numero_arquivo = st.text_input("Número do arquivo:")
         
-        # Botão para consultar os arquivos
-        if st.button("Consultar"):
-            if path_ap007b and path_cobranca and path_ap007a:
-                df_ap007b_ret = processar_arquivos_ap007b(path_ap007b)
-                df_cnpj = processar_cnpj_cobranca(path_cobranca, df_ap007b_ret)
-                df_ap007a_ret, df_onerados, df_reenviar, df_erros = processar_um_arquivo_ap007a(path_ap007a, df_cnpj)
+        
+        # Botão para processar tudo
+        if st.button("Processar Tudo"):
+            # Verifica se todos os campos foram preenchidos
+            if path_inativacao and path_ap007b and path_ap007a and numero_arquivo:
+                # Processa os arquivos com base nos inputs fornecidos
+                buffer_ap007a, nome_arquivo_ap007a, buffer_ap007b, nome_arquivo_ap007b = gerar_arquivos_inativacao(path_ap007a, path_ap007b, path_inativacao, data_nome_arquivo, numero_arquivo)
                 
-                onerados = df_onerados.shape[0]
-                atualizar = df_reenviar.shape[0]
-                erros = df_erros.shape[0]
-                
-                st.write(f'Foram encontrados {onerados} URs oneradas, {atualizar} para atualizar e {erros} deram erro')
-                
-                # Define o estado como consultado para mostrar o botão "Continuar"
-                st.session_state.consultado = True
+                st.session_state['buffer_ap007a'] = buffer_ap007a
+                st.session_state['buffer_ap007b'] = buffer_ap007b
+                st.session_state['nome_arquivo_ap007a'] = nome_arquivo_ap007a
+                st.session_state['nome_arquivo_ap007b'] = nome_arquivo_ap007b
+
+            else:
+                st.warning("Por favor, preencha todos os campos antes de processar.")
+        
+            # Verificar se os arquivos foram processados e se o botão "Processar Tudo" foi clicado
+            if 'buffer_ap007a' in st.session_state and 'buffer_ap007b' in st.session_state:
+                # Criar um arquivo ZIP com os dois arquivos CSV
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w") as zf:
+                    zf.writestr(f"{st.session_state['nome_arquivo_ap007a']}.gz", st.session_state['buffer_ap007a'].getvalue())
+                    zf.writestr(f"{st.session_state['nome_arquivo_ap007b']}.gz", st.session_state['buffer_ap007b'].getvalue())
+                zip_buffer.seek(0)
+
+                # Adicionar botão de download para o arquivo ZIP
+                st.download_button(
+                    label="Baixar arquivos de inativação AP007A e AP007B",
+                    data=zip_buffer,
+                    file_name="arquivos.zip",
+                    mime="application/zip"
+                )
             
-    fluxo_processamento()
+    fluxo_processamento_inativacao()
     
     if st.button("Voltar"):
         st.session_state.page = "menu_tipo_relatorio"

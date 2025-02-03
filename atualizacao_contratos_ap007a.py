@@ -10,6 +10,7 @@ import calendar
 import time
 import os
 import platform
+import io
 
 def corrigir_valor(valor):
     # Converter para string para tratar os valores
@@ -92,4 +93,12 @@ def gerar_arquivo_ap007a_atualizacao(df_reenviar, prefixo_mes, data_nome_arquivo
     df_ap007a['valor_a_ser_mantido'] = df_ap007a['valor_a_ser_mantido'].map('{:.2f}'.format)
     
     nome_arquivo = f'CERC-AP007A_52541797_{data_nome_arquivo}_000000{numero_arquivo}.csv'
-    df_ap007a.to_csv(f'arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)  
+    
+    # Salvando o arquivo CSV comprimido em um buffer
+    buffer = io.BytesIO()
+    df_ap007a.to_csv(buffer, header=None, sep=';', index=False, compression='gzip')
+    buffer.seek(0)
+    
+    return buffer, nome_arquivo
+    
+    #df_ap007a.to_csv(f'arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)  

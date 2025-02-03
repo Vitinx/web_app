@@ -10,6 +10,7 @@ import calendar
 import time
 import os
 import platform
+import io
 
 def corrigir_valor(valor):
     # Converter para string para tratar os valores
@@ -26,7 +27,7 @@ def corrigir_valor(valor):
     
     return valor_final 
 
-def gerar_arquivo_ap007a_inativacao(df_reenviar, prefixo_mes, data_nome_arquivo, data_inicio_assinatura, data_fim_assinatura, numero_arquivo):
+def gerar_arquivo_ap007a_inativacao(df_mktup, df_ap007a_ret, prefixo_mes, data_nome_arquivo, data_inicio_assinatura, data_fim_assinatura, numero_arquivo):
     #Definindo tipo de operacao
     tipo_de_operacao_c = 'C' # Criar contrato
     tipo_de_operacao_a = 'A' # Atualizar contrato
@@ -34,17 +35,17 @@ def gerar_arquivo_ap007a_inativacao(df_reenviar, prefixo_mes, data_nome_arquivo,
     tipo_de_operacao_b = 'B' # Baixa
     tipo_de_operacao_s = 'S' # Simular contrato
 
-    referencia_externa = prefixo_mes+df_reenviar['ID'].astype(str) # Código
-    identificador_do_contrato = 'id'+df_reenviar['ID'].astype(str) # Código
-    contratante = df_reenviar['CNPJ'] # CNPJ cliente
+    referencia_externa = prefixo_mes+df_mktup['ID'].astype(str) # Código
+    identificador_do_contrato = 'id'+df_mktup['ID'].astype(str) # Código
+    contratante = df_mktup['CNPJ'] # CNPJ cliente
     repactuacao = '0' # Não
     lista_de_identificadores = ''
     participante = '52541797000138' # CNPJ Veon
     detentor = '52541797000138' # CNPJ Veon
     tipo_de_efeito = '3' # Ônus - Outros
-    saldo_devedor = df_reenviar['VALOR'] # Valor da mensalidade
-    limite_da_operacao = df_reenviar['VALOR'] # Valor da mensalidade
-    valor_a_ser_mantido = df_reenviar['VALOR'] # Valor da mensalidade
+    saldo_devedor = df_ap007a_ret['VALOR'] # Valor da mensalidade
+    limite_da_operacao = df_ap007a_ret['VALOR'] # Valor da mensalidade
+    valor_a_ser_mantido = df_ap007a_ret['VALOR'] # Valor da mensalidade
     data_da_assinatura = data_inicio_assinatura # Data de início da cobrança
     data_de_vencimento = data_fim_assinatura # Data de fim da cobrança
     tipo_de_servico = '1' # Gestão colateral
@@ -92,4 +93,12 @@ def gerar_arquivo_ap007a_inativacao(df_reenviar, prefixo_mes, data_nome_arquivo,
     df_ap007a['valor_a_ser_mantido'] = df_ap007a['valor_a_ser_mantido'].map('{:.2f}'.format)
     
     nome_arquivo = f'CERC-AP007A_52541797_{data_nome_arquivo}_000000{numero_arquivo}.csv'
-    df_ap007a.to_csv(f'arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)     
+    
+    # Salvando o arquivo CSV comprimido em um buffer
+    buffer = io.BytesIO()
+    df_ap007a.to_csv(buffer, header=None, sep=';', index=False, compression='gzip')
+    buffer.seek(0)
+    
+    return buffer, nome_arquivo
+    
+    # df_ap007a.to_csv(f'arquivos_entrada/AP_007A/{nome_arquivo}.gz', header=None, sep=';', index=False)     

@@ -31,7 +31,7 @@ def processar_arquivos_ap007b(path_ap007b):
     # Lista para armazenar os DataFrames
     dataframes = []
 
-# Verificar se há arquivos carregados
+    # Verificar se há arquivos carregados
     if path_ap007b:
         for file in path_ap007b:
             # Ler cada arquivo CSV em um DataFrame
