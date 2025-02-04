@@ -557,6 +557,10 @@ def menu_relatorio_marketup():
 
     st.markdown('<div class="subtitle">Arquivos de Entrada</div>', unsafe_allow_html=True)
     
+    # Verifica se os dados já foram processados
+    if 'resultado_final' not in st.session_state:
+        st.session_state.resultado_final = None
+
     uploaded_ap005_files = st.file_uploader("Selecione os arquivos AP005", 
                                           type=['csv', 'xlsx'], 
                                           accept_multiple_files=True)
@@ -672,7 +676,7 @@ def menu_relatorio_marketup():
                         continue
 
             status_text.text("Combinando dados...")
-            # Combinando DataFrames
+             # Combinando DataFrames
             if all_ap005_dfs:
                 combined_ap005 = pd.concat(all_ap005_dfs, ignore_index=True)
                 combined_ap005 = combined_ap005.drop_duplicates()
@@ -682,8 +686,10 @@ def menu_relatorio_marketup():
 
                 status_text.text("Processando resultados...")
                 resultado_final = process_payment_data(combined_ap005, df_cnpj)
+                
+                # Armazena o resultado no session_state
+                st.session_state.resultado_final = resultado_final
 
-                # Mostrando resultados
                 st.success("Processamento concluído com sucesso!")
                 
                 # Adiciona informação sobre o período filtrado
@@ -691,54 +697,6 @@ def menu_relatorio_marketup():
                     st.info(f"Dados filtrados para o período de {start_date.strftime('%d/%m/%Y')} "
                            f"até {end_date.strftime('%d/%m/%Y')}")
                 
-                st.markdown('<div class="subtitle">Resumo de Pagamentos</div>', 
-                           unsafe_allow_html=True)
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    total_cnpjs = len(resultado_final['CNPJ'].unique())
-                    cnpjs_pagos = len(resultado_final[
-                        (resultado_final['STATUS_PAGAMENTO'].isin(['PAGO', 'PAGO PARCIALMENTE']))
-                    ]['CNPJ'].unique())
-                    
-                    st.metric("Total de CNPJs", f"{total_cnpjs:,}")
-                    st.metric("CNPJs Pagos", f"{cnpjs_pagos:,}")
-                
-                with col2:
-                    total_mensalidade = resultado_final['VALOR_MENSALIDADE'].apply(
-                        lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
-                    ).sum()
-                    
-                    total_cobrado = resultado_final['VALOR_COBRADO'].apply(
-                        lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
-                    ).sum()
-                    
-                    # st.metric("Valor Total Mensalidade", 
-                    #          f"R$ {locale.format_string('%.2f', total_mensalidade, grouping=True)}")
-                    # st.metric("Valor Total Cobrado", 
-                    #          f"R$ {locale.format_string('%.2f', total_cobrado, grouping=True)}")
-                    
-                    st.metric("Valor Total Mensalidade", format_currency(total_mensalidade))
-                    st.metric("Valor Total Cobrado", format_currency(total_cobrado))
-
-                # Download do resultado
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                output_path = f'relatorio_marketup_{timestamp}.xlsx'
-                save_to_excel(resultado_final, output_path)
-                
-                with open(output_path, 'rb') as f:
-                    excel_data = f.read()
-                
-                st.download_button(
-                    label="Download Relatório Completo",
-                    data=excel_data,
-                    file_name=output_path,
-                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                )
-
-                # Remover arquivo temporário
-                import os
-                os.remove(output_path)
             else:
                 st.error("Nenhum dado foi encontrado após o processamento dos arquivos.")
 
@@ -748,8 +706,60 @@ def menu_relatorio_marketup():
             import traceback
             st.error(traceback.format_exc())
 
+    # Exibe os dados processados diretamente se já estiverem no session_state
+    if st.session_state.resultado_final is not None:
+        exibir_resumo_pagamentos(st.session_state.resultado_final)
+
+        # Botão de download para o resultado já processado
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_path = f'relatorio_marketup_{timestamp}.xlsx'
+        save_to_excel(st.session_state.resultado_final, output_path)
+        
+        with open(output_path, 'rb') as f:
+            excel_data = f.read()
+        
+        st.download_button(
+            label="Download Relatório Completo",
+            data=excel_data,
+            file_name=output_path,
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+        # Remover arquivo temporário
+        import os
+        os.remove(output_path)
+
     if st.button("Voltar"):
         st.session_state.page = "home"
+
+def exibir_resumo_pagamentos(resultado_final):
+    """Função para exibir o resumo de pagamentos."""
+    st.markdown('<div class="subtitle">Resumo de Pagamentos</div>', 
+               unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        total_cnpjs = len(resultado_final['CNPJ'].unique())
+        cnpjs_pagos = len(resultado_final[
+            (resultado_final['STATUS_PAGAMENTO'].isin(['PAGO', 'PAGO PARCIALMENTE']))
+        ]['CNPJ'].unique())
+        
+        st.metric("Total de CNPJs", f"{total_cnpjs:,}")
+        st.metric("CNPJs Pagos", f"{cnpjs_pagos:,}")
+    
+    with col2:
+        total_mensalidade = resultado_final['VALOR_MENSALIDADE'].apply(
+            lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
+        ).sum()
+        
+        total_cobrado = resultado_final['VALOR_COBRADO'].apply(
+            lambda x: float(x.replace('.', '').replace(',', '.')) if isinstance(x, str) else x
+        ).sum()
+        
+        st.metric("Valor Total Mensalidade", 
+                 f"R$ {locale.format_string('%.2f', total_mensalidade, grouping=True)}")
+        st.metric("Valor Total Cobrado", 
+                 f"R$ {locale.format_string('%.2f', total_cobrado, grouping=True)}")
 
 def menu_relatorio_financeiro():
     st.markdown('<div class="title">Relatório Financeiro</div>', unsafe_allow_html=True)

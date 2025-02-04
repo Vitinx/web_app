@@ -120,6 +120,9 @@ def process_payment_data(df_ap005, df_cnpj):
             df_ap005.drop('informacoes_pagamento', axis=1),
             df_separado
         ], axis=1)
+        
+        # Verifica pagamentos via débito (códigos terminados em 'D')
+        df_ap005['is_debito'] = df_ap005['arranjo_pagamento'].str.endswith('D')
 
         # Verifica se a coluna existe antes de tentar acessá-la
         if 'valor_constituido_contrato_unidade_recebivel' in df_ap005.columns:
@@ -134,10 +137,23 @@ def process_payment_data(df_ap005, df_cnpj):
             errors='coerce'
         )
         
+        # Converte data_liquidacao_efetiva para datetime
         df_ap005['data_liquidacao'] = pd.to_datetime(
             df_ap005['data_liquidacao_efetiva'],
             errors='coerce'
         )
+        
+        # Considera o valor apenas se tiver data de liquidação OU for débito
+        df_ap005['valor_valido'] = df_ap005.apply(
+            lambda row: (
+                pd.notnull(row['data_liquidacao']) or  # Tem data de liquidação
+                row['is_debito']  # É pagamento via débito
+            ),
+            axis=1
+        )
+        
+        # Zera valores que não atendem aos critérios
+        df_ap005.loc[~df_ap005['valor_valido'], 'valor_constituido_contrato_unidade_recebivel'] = 0
         
         df_ap005 = df_ap005[df_ap005['numero_documento_titular'] == '13998916000124']
         
